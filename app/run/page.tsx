@@ -1,9 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import { consumeNdjsonStream, type AuditStreamEvent } from "@/lib/stream-client";
 import type { Framework } from "@/lib/types";
+import { Logo } from "@/components/site/Logo";
 
 type PendingAudit = {
   companyName: string;
@@ -40,7 +43,7 @@ export default function RunAuditPage() {
   const started = useRef(false);
 
   useEffect(() => {
-    const raw = sessionStorage.getItem("auditai:pending");
+    const raw = sessionStorage.getItem("lexitude:pending");
     if (!raw) {
       router.replace("/new");
       return;
@@ -67,59 +70,80 @@ export default function RunAuditPage() {
     });
   }, [pending, router]);
 
-  if (!pending) {
-    return (
-      <div className="mx-auto w-full max-w-3xl px-6 py-16 text-sm text-zinc-500">
-        Loading…
-      </div>
-    );
-  }
-
   return (
-    <div className="mx-auto w-full max-w-5xl px-6 py-10">
-      <div className="mb-8">
-        <p className="font-mono text-xs uppercase tracking-widest text-zinc-500">
-          Auditing · {pending.framework}
-        </p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-          {pending.companyName}
-        </h1>
-        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          {overall}
-        </p>
-      </div>
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="pointer-events-none fixed inset-0 bg-grid opacity-[0.2]" />
+      <div
+        className="pointer-events-none fixed inset-0"
+        style={{ background: "var(--gradient-radial)" }}
+      />
 
-      {fatalError && (
-        <div className="mb-6 border border-red-500/40 bg-red-500/5 px-4 py-3 text-sm text-red-700 dark:text-red-400">
-          {fatalError}
+      <header className="relative border-b border-border bg-background/70 backdrop-blur-xl">
+        <div className="mx-auto flex min-h-14 max-w-5xl items-center justify-between px-6 py-2">
+          <Link href="/" className="flex items-center gap-2">
+            <Logo />
+            <span className="text-sm font-semibold tracking-tight">Lexitude</span>
+          </Link>
+          <Link
+            href="/history"
+            className="text-xs text-muted-foreground hover:text-foreground"
+          >
+            Past runs →
+          </Link>
         </div>
-      )}
+      </header>
 
-      <div className="space-y-6">
-        <ModuleCard
-          number="00"
-          title="Ingest"
-          subtitle="Fetch repo + parse policies"
-          state={ingest}
-        />
-        <ModuleCard
-          number="01"
-          title="Code Compliance"
-          subtitle="Score repository against framework"
-          state={code}
-        />
-        <ModuleCard
-          number="02"
-          title="Policy Intelligence"
-          subtitle="Read policies, flag conflicts and gaps"
-          state={policy}
-        />
-        <ModuleCard
-          number="03"
-          title="Risk Surface"
-          subtitle="Cross-reference code vs policy"
-          state={risk}
-        />
+      <div className="relative mx-auto w-full max-w-5xl px-6 py-10">
+        {!pending ? (
+          <div className="text-sm text-muted-foreground">Loading…</div>
+        ) : (
+          <>
+            <div className="mb-8">
+              <div className="mb-2 font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+                Auditing · {pending.framework}
+              </div>
+              <h1 className="text-3xl font-semibold tracking-tight">
+                {pending.companyName}
+              </h1>
+              <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+                <span
+                  aria-hidden="true"
+                  className="h-1.5 w-1.5 rounded-full bg-foreground/70"
+                  style={{ animation: "pulse-dot 1.6s ease-in-out infinite" }}
+                />
+                {overall}
+              </p>
+            </div>
+
+            {fatalError && (
+              <div className="mb-6 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                {fatalError}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <ModuleCard number="00" title="Ingest" subtitle="Fetch repo + parse policies" state={ingest} />
+              <ModuleCard
+                number="01"
+                title="Code Compliance"
+                subtitle="Score repository against framework"
+                state={code}
+              />
+              <ModuleCard
+                number="02"
+                title="Policy Intelligence"
+                subtitle="Read policies, flag conflicts and gaps"
+                state={policy}
+              />
+              <ModuleCard
+                number="03"
+                title="Risk Surface"
+                subtitle="Cross-reference code vs policy"
+                state={risk}
+              />
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -145,45 +169,61 @@ function ModuleCard({
     state.status === "done"
       ? "Done"
       : state.status === "running"
-        ? "Running…"
+        ? "Running"
         : state.status === "error"
           ? "Error"
           : "Queued";
 
-  const badgeClass =
+  const dot =
     state.status === "done"
-      ? "bg-black text-white dark:bg-white dark:text-black"
+      ? "bg-emerald-400"
       : state.status === "running"
-        ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-black animate-pulse"
+        ? "bg-foreground/80"
         : state.status === "error"
-          ? "bg-red-600 text-white"
-          : "border border-zinc-300 text-zinc-500 dark:border-zinc-700";
+          ? "bg-destructive"
+          : "bg-muted-foreground/40";
 
   return (
-    <div className="border border-zinc-200 dark:border-zinc-800">
-      <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-3 dark:border-zinc-800">
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="overflow-hidden rounded-xl border border-border bg-surface/40"
+    >
+      <div className="flex items-center justify-between border-b border-border px-5 py-3">
         <div className="flex items-baseline gap-3">
-          <span className="font-mono text-xs text-zinc-500">{number}</span>
+          <span className="font-mono text-xs text-muted-foreground">{number}</span>
           <span className="text-sm font-semibold">{title}</span>
-          <span className="text-xs text-zinc-500">{subtitle}</span>
+          <span className="text-xs text-muted-foreground">{subtitle}</span>
         </div>
-        <span className={`px-2 py-0.5 text-[10px] font-mono uppercase tracking-widest ${badgeClass}`}>
+        <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${dot}`}
+            style={
+              state.status === "running"
+                ? { animation: "pulse-dot 1.6s ease-in-out infinite" }
+                : undefined
+            }
+          />
           {badge}
         </span>
       </div>
       {(state.commentary || state.error) && (
         <div
           ref={logRef}
-          className="max-h-48 overflow-y-auto bg-zinc-50 px-5 py-3 font-mono text-xs leading-relaxed text-zinc-700 dark:bg-zinc-950 dark:text-zinc-300"
+          className="relative max-h-56 overflow-y-auto bg-background px-5 py-3 font-mono text-xs leading-relaxed text-muted-foreground"
         >
           {state.error ? (
-            <span className="text-red-600 dark:text-red-400">{state.error}</span>
+            <span className="text-destructive">{state.error}</span>
           ) : (
-            <pre className="whitespace-pre-wrap">{state.commentary}</pre>
+            <pre className="whitespace-pre-wrap text-foreground/80">
+              {state.commentary}
+            </pre>
           )}
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -304,7 +344,7 @@ async function runPipeline(
       throw new Error(saveJson?.error ?? "Save failed");
     }
 
-    sessionStorage.removeItem("auditai:pending");
+    sessionStorage.removeItem("lexitude:pending");
     h.setOverall("Complete");
     h.onSaved(saveJson.id);
   } catch (err) {

@@ -116,7 +116,7 @@ async function gh<T>(url: string, token: string | undefined, accept = "applicati
     headers: {
       Accept: accept,
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "AuditAI/0.1",
+      "User-Agent": "Lexitude/0.1",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     cache: "no-store",
