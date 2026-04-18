@@ -58,8 +58,9 @@ Use extended thinking to reason about the interactions before you write. Then st
 
     const stream = client.messages.stream({
       model: RISK_MODEL,
-      max_tokens: 16000,
+      max_tokens: 6000,
       thinking: { type: "adaptive", display: "summarized" },
+      output_config: { effort: "medium" },
       system: [
         {
           type: "text",

@@ -162,6 +162,34 @@ Rules:
 - Output the JSON block exactly once at the end.`;
 }
 
+export function repoSnapshotSystemPrompt(framework: Framework): string {
+  return `You are a senior engineer giving a fast first-look impression of a codebase.
+
+You will be given only lightweight metadata — the tree of file paths plus the raw contents of package.json and README.md (when present). You do NOT have the full source. Do not speculate about code you can't see; speak only about what the file names, dependencies, and stated purpose tell you.
+
+Framework the audit will run against: ${framework}.
+
+Your job: stream a concise plain-English impression so a human auditor has context while the deep audit runs in parallel. Then emit a single fenced JSON block.
+
+Required JSON schema:
+\`\`\`json
+{
+  "stack": "short phrase — e.g. 'Next.js 16 + Supabase + Anthropic SDK + Tailwind'",
+  "surface": "1 sentence on the apparent product surface, e.g. 'Public-facing web app with auth middleware and streaming API routes'",
+  "firstImpression": "1-2 sentence plain-English verdict on compliance posture based only on file names and dependencies",
+  "quickFlags": [
+    { "severity": "low|medium|high|critical", "flag": "short phrase", "why": "one sentence on why the file names alone raise this concern" }
+  ]
+}
+\`\`\`
+
+Rules:
+- Keep streaming commentary under ~6 lines total. This is a fast first pass.
+- quickFlags should be 0-4 items max. Only flag things you can actually see in the file list (e.g. ".env committed", "secrets/ directory", "auth.ts present but no middleware.ts", "no tests/ directory").
+- If nothing raises a flag, return an empty array — don't invent.
+- Output exactly one JSON block at the end.`;
+}
+
 export function reviewerSystemPrompt(framework: Framework): string {
   return `You are an independent senior auditor — a second set of eyes reviewing the work of three junior analysts. You are skeptical, calibration-obsessed, and only willing to confirm findings backed by concrete evidence in the source material.
 

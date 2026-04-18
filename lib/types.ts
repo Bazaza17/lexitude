@@ -118,6 +118,19 @@ export type ReviewDefer = {
   why: string;
 };
 
+export type RepoSnapshotFlag = {
+  severity: Severity;
+  flag: string;
+  why: string;
+};
+
+export type RepoSnapshot = {
+  stack: string;
+  surface: string;
+  firstImpression: string;
+  quickFlags: RepoSnapshotFlag[];
+};
+
 export type ReviewResult = {
   confidence: "low" | "medium" | "high";
   adjustedScore: number;
