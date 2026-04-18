@@ -104,11 +104,14 @@ Audit the policy documents above for ${framework} compliance. Stream commentary 
 
     const stream = client.messages.stream({
       model: POLICY_MODEL,
-      // 8000 keeps room for ~2-3 dense policy docs + the full cross-reference
-      // table without truncating mid-JSON. Haiku 4.5 doesn't accept the
-      // `effort` output_config parameter (will 400), so rely on the schema
-      // in the system prompt plus streaming to keep output on the rails.
-      max_tokens: 8000,
+      // 16000 keeps headroom for a full cross-reference table on repos with
+      // rich policy docs. Ledgerwise (one dense SECURITY.md + many code-vs-
+      // policy affirmations) pushed past 8000 and truncated mid-JSON. Haiku
+      // 4.5's output ceiling is 64k tokens, so 16k is still well inside.
+      // Haiku 4.5 doesn't accept the `effort` output_config parameter (will
+      // 400), so rely on the schema in the system prompt plus streaming to
+      // keep output on the rails.
+      max_tokens: 16000,
       system: [
         {
           type: "text",

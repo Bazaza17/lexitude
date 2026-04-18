@@ -66,7 +66,10 @@ Audit the code bundle above for ${framework} compliance exposure. Stream comment
 
     const stream = client.messages.stream({
       model: CODE_MODEL,
-      max_tokens: 8000,
+      // 16000 gives headroom for repos with lots of findings (e.g. FinovaBank
+      // routinely produces 50+ findings × multi-line recommendations). Haiku
+      // 4.5 ceiling is 64k output tokens so this stays well inside.
+      max_tokens: 16000,
       system: [
         {
           type: "text",
