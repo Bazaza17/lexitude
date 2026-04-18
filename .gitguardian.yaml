@@ -1,0 +1,15 @@
+# GitGuardian config
+# https://docs.gitguardian.com/ggshield-docs/reference/config-files
+#
+# The demo/ tree holds deliberately-broken sample repos used as audit
+# *input* by Lexitude — FinovaBank (SOC 2 bad-example), NovoGen (HIPAA
+# bad-example), and Ledgerwise (PCI DSS good-example). FinovaBank and
+# NovoGen in particular contain hardcoded fake API keys, DB creds, and
+# analytics tokens by design — those are the smells the audit is supposed
+# to catch. None of these secrets are real; they never had live values.
+#
+# The demo/ tree is already excluded from ESLint via eslint.config.mjs
+# globalIgnores for the same reason.
+version: 2
+paths-ignore:
+  - "demo/**"
