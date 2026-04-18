@@ -585,6 +585,11 @@ function StepPolicy({
   const [discovering, setDiscovering] = useState(false);
   const [discoverErr, setDiscoverErr] = useState<string | null>(null);
   const [discoverStatus, setDiscoverStatus] = useState<string | null>(null);
+  // Track which repo URL we've already auto-scanned so remounts / re-renders
+  // of this step don't spam the discover endpoint. Keyed by URL so if the
+  // user goes back to step 2 and changes the repo, we re-scan once for the
+  // new URL.
+  const autoScannedUrl = useRef<string | null>(null);
 
   async function runAutoDiscover() {
     if (discovering) return;
@@ -625,6 +630,33 @@ function StepPolicy({
 
   const hasAnyDoc =
     policyFiles.length > 0 || discoveredDocs.length > 0 || !!policyText.trim();
+
+  // Auto-fire discovery as soon as the user lands on step 3 with a repo URL
+  // and no existing docs. Judges shouldn't have to click "Auto-discover" to
+  // pull the SECURITY.md that's already sitting in the repo they pasted.
+  // Guarded by `autoScannedUrl` so we only hit the endpoint once per URL
+  // (re-renders, AnimatePresence remounts, etc. won't re-scan).
+  useEffect(() => {
+    const url = repoUrl.trim();
+    if (!url) return;
+    if (autoScannedUrl.current === url) return;
+    // Don't auto-scan if the user already has docs from any source —
+    // scenario pre-seeds, uploads, or pasted text all count.
+    if (hasAnyDoc) {
+      autoScannedUrl.current = url;
+      return;
+    }
+    autoScannedUrl.current = url;
+    // The effect triggers setState via the async helper — that's the point:
+    // we're kicking off a fetch whose state updates drive the spinner and
+    // results. React 19's set-state-in-effect rule can't see through the
+    // async boundary; disable it inline.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void runAutoDiscover();
+    // runAutoDiscover closes over repoUrl + setters; repoUrl is the only
+    // value whose change should retrigger a scan.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repoUrl]);
 
   return (
     <div>
@@ -690,7 +722,7 @@ function StepPolicy({
               ) : (
                 <>
                   <span aria-hidden="true">⎇</span>
-                  Auto-discover from repo
+                  {discoverStatus || discoverErr ? "Re-scan repo" : "Auto-discover from repo"}
                 </>
               )}
             </button>
@@ -700,10 +732,12 @@ function StepPolicy({
             <ConnectorStub label="SharePoint" />
           </div>
           <p className="mt-3 text-xs text-muted-foreground">
-            Auto-discover scans your repo for <code className="font-mono">SECURITY.md</code>,{" "}
+            Lexitude scans your repo automatically for{" "}
+            <code className="font-mono">SECURITY.md</code>,{" "}
             <code className="font-mono">PRIVACY.md</code>,{" "}
             <code className="font-mono">docs/compliance/</code>, and other
-            conventional policy locations. Connectors coming soon.
+            conventional policy locations. If it misses something, upload or
+            paste below. Connectors coming soon.
           </p>
 
           {discoverStatus && (
