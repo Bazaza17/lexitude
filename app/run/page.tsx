@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { consumeNdjsonStream, type AuditStreamEvent } from "@/lib/stream-client";
+import { consumeNdjsonStream, type AuditStreamEvent } from "@/lib/stream/client";
 import type { Framework, RepoSnapshot, RepoSnapshotFlag } from "@/lib/types";
 import { Logo } from "@/components/site/Logo";
 
@@ -519,7 +519,7 @@ async function runPipeline(
     // mode, producing the required-policy list this company needs. This
     // keeps the downstream Risk + Review modules (and the drafting engine)
     // working on a real PolicyResult rather than null. See
-    // policyAuditNoDocsSystemPrompt in lib/audit-prompts.ts.
+    // policyAuditNoDocsSystemPrompt in lib/audit/prompts.ts.
     h.setPolicy({ ...emptyModule, status: "running" });
     const policyPromise = streamAudit(h.setPolicy, "/api/audit/policy", {
       companyName: p.companyName,

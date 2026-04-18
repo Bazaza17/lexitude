@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { discoverPolicies } from "@/lib/policy-discovery";
+import { discoverPolicies } from "@/lib/ingest/policy-discovery";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;

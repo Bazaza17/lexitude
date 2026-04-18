@@ -1,4 +1,4 @@
-import { fetchRepo, type RepoFile } from "@/lib/github";
+import { fetchRepo, type RepoFile } from "@/lib/ingest/github";
 
 /**
  * Path allowlist for auto-discovering policy-like documents in a repo.

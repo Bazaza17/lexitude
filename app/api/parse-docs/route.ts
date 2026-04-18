@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
-import { chunkText } from "@/lib/chunk";
-import { extractPdfText, looksLikePdf } from "@/lib/pdf";
+import { chunkText } from "@/lib/ingest/chunk";
+import { extractPdfText, looksLikePdf } from "@/lib/ingest/pdf";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;

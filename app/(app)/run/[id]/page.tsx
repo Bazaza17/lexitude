@@ -5,8 +5,8 @@ import { Fragment, useEffect, useRef, useState, use } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AppHeader } from "@/components/app/AppHeader";
 import { Sparkline } from "@/components/app/Sparkline";
-import { useCountUp } from "@/lib/useCountUp";
-import { consumeNdjsonStream, type AuditStreamEvent } from "@/lib/stream-client";
+import { useCountUp } from "@/lib/hooks/useCountUp";
+import { consumeNdjsonStream, type AuditStreamEvent } from "@/lib/stream/client";
 import { frameworkDisplayName } from "@/lib/types";
 import type {
   AuditRunRow,

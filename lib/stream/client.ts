@@ -1,8 +1,8 @@
-import type { AuditStreamEvent } from "./types";
+import type { AuditStreamEvent } from "../types";
 
-// Re-export so existing `import { AuditStreamEvent } from "@/lib/stream-client"`
-// call sites keep working. The canonical definition lives in lib/types.ts so
-// the server producer and this browser consumer share it.
+// Re-export so callers can keep `import { AuditStreamEvent } from "@/lib/stream/client"`
+// in one place. The canonical definition lives in lib/types.ts so the server
+// producer (lib/stream/server.ts) and this browser consumer share it.
 export type { AuditStreamEvent };
 
 export async function consumeNdjsonStream(

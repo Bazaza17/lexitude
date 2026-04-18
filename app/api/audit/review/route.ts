@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
-import { getAnthropic, REVIEW_MODEL } from "@/lib/anthropic";
-import { createAuditStream, extractJsonBlock } from "@/lib/sse";
-import { reviewerSystemPrompt, type Framework } from "@/lib/audit-prompts";
+import { getAnthropic, REVIEW_MODEL } from "@/lib/audit/anthropic";
+import { createAuditStream, extractJsonBlock } from "@/lib/stream/server";
+import { reviewerSystemPrompt, type Framework } from "@/lib/audit/prompts";
 import type { CodeResult, PolicyResult } from "@/lib/types";
 
 export const runtime = "nodejs";

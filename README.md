@@ -89,24 +89,33 @@ Open [http://localhost:3000](http://localhost:3000).
 ## Repo layout
 
 ```
-app/              Next.js 16 App Router
-  api/audit/*     One route per pipeline module; each streams NDJSON
-  new/            Four-step wizard
-  run/            Live audit dashboard
-  (app)/history/  Run history + archive view
-components/site/  Landing-page pieces
-lib/              Model wiring, prompts, GitHub fetcher, Supabase client
-demo/             Pre-seeded fixture repos for the scenario cards
-supabase/         One-shot schema.sql
+app/                  Next.js 16 App Router
+  api/audit/*         One route per pipeline module; each streams NDJSON
+  new/                Four-step wizard
+  run/                Live audit dashboard
+  (app)/history/      Run history + archive view
+components/
+  site/               Landing-page pieces
+  app/                In-app shell + chart pieces
+lib/
+  audit/              Anthropic client + framework prompts
+  ingest/             GitHub fetcher, policy discovery, PDF + chunking
+  stream/             NDJSON producer (server) + consumer (client)
+  hooks/              React hooks
+  (top-level)         Cross-cutting: types, supabase, demo-scenarios, utils
+demo/                 Pre-seeded fixture repos for the scenario cards
+docs/                 Architecture + deep-dive docs for judges
+supabase/             One-shot schema.sql
 ```
 
 ---
 
 ## Judges: what files to look at first
 
+- **Architecture overview** — [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md)
 - **Pipeline orchestration** — `app/run/page.tsx` (the `runPipeline` fn)
-- **Prompt design** — `lib/audit-prompts.ts`
-- **Model strategy** — `lib/anthropic.ts` (Haiku for scan/calibration,
+- **Prompt design** — `lib/audit/prompts.ts`
+- **Model strategy** — `lib/audit/anthropic.ts` (Haiku for scan/calibration,
   Opus for synthesis)
-- **GitHub ingestion** — `lib/github.ts`, `lib/policy-discovery.ts`
-- **Streaming protocol** — `lib/sse.ts`, `lib/stream-client.ts`
+- **GitHub ingestion** — `lib/ingest/github.ts`, `lib/ingest/policy-discovery.ts`
+- **Streaming protocol** — `lib/stream/server.ts`, `lib/stream/client.ts`

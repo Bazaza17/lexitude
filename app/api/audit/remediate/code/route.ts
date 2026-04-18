@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
-import { getAnthropic, CODE_MODEL } from "@/lib/anthropic";
-import { createAuditStream } from "@/lib/sse";
-import { codeFixSystemPrompt, type Framework } from "@/lib/audit-prompts";
+import { getAnthropic, CODE_MODEL } from "@/lib/audit/anthropic";
+import { createAuditStream } from "@/lib/stream/server";
+import { codeFixSystemPrompt, type Framework } from "@/lib/audit/prompts";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;

@@ -1,8 +1,8 @@
-import type { AuditStreamEvent } from "./types";
+import type { AuditStreamEvent } from "../types";
 
-// Re-export so existing `import { AuditStreamEvent } from "@/lib/sse"` call
-// sites keep working. The canonical definition lives in lib/types.ts so the
-// producer (this file) and the consumer (stream-client.ts) share it.
+// Re-export so callers can keep `import { AuditStreamEvent } from "@/lib/stream/server"`
+// in one place. The canonical definition lives in lib/types.ts so the
+// producer (this file) and the consumer (lib/stream/client.ts) share it.
 export type { AuditStreamEvent };
 
 export function createAuditStream(

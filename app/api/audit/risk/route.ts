@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
-import { getAnthropic, RISK_MODEL } from "@/lib/anthropic";
-import { createAuditStream, extractJsonBlock } from "@/lib/sse";
-import { riskSynthesisSystemPrompt, type Framework } from "@/lib/audit-prompts";
+import { getAnthropic, RISK_MODEL } from "@/lib/audit/anthropic";
+import { createAuditStream, extractJsonBlock } from "@/lib/stream/server";
+import { riskSynthesisSystemPrompt, type Framework } from "@/lib/audit/prompts";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;

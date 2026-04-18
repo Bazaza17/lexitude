@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { fetchRepo } from "@/lib/github";
+import { fetchRepo } from "@/lib/ingest/github";
 
 export const runtime = "nodejs";
 // GitHub ingest does ~1 tree call + N parallel blob fetches. Without a

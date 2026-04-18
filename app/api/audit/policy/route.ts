@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
-import { getAnthropic, POLICY_MODEL } from "@/lib/anthropic";
-import { createAuditStream, extractJsonBlock } from "@/lib/sse";
+import { getAnthropic, POLICY_MODEL } from "@/lib/audit/anthropic";
+import { createAuditStream, extractJsonBlock } from "@/lib/stream/server";
 import {
   policyAuditNoDocsSystemPrompt,
   policyAuditSystemPrompt,
   type Framework,
-} from "@/lib/audit-prompts";
+} from "@/lib/audit/prompts";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
