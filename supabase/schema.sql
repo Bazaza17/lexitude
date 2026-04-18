@@ -1,4 +1,4 @@
--- AuditAI schema
+-- Lexitude schema
 -- Run this in the Supabase SQL Editor once. No auth, permissive RLS for the hackathon.
 -- Safe to re-run: drops and recreates the audit_runs table.
 
