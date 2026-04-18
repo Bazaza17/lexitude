@@ -153,7 +153,7 @@ export default function RunAuditPage() {
               <ModuleCard
                 number="04"
                 title="Audit Review"
-                subtitle="Opus 4.7 · independent critic pass"
+                subtitle="Sonnet 4.6 · independent critic pass"
                 state={review}
               />
             </div>
