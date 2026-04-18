@@ -94,7 +94,7 @@ export default function NewAuditPage() {
   // re-run of discovery replaces the set cleanly.
   const [discoveredDocs, setDiscoveredDocs] = useState<
     Array<{ path: string; name: string; text: string }>
-  >([]);
+  >(initial?.discoveredDocs ?? []);
 
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -118,6 +118,8 @@ export default function NewAuditPage() {
     setRepoUrl(s.repoUrl);
     setRepoPaths(s.repoPaths);
     setPolicyText(s.policyText);
+    setDiscoveredDocs(s.discoveredDocs ?? []);
+    setPolicyFiles([]);
     setStep(0);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
