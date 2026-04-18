@@ -7,8 +7,8 @@ runs a five-module pipeline to produce a compliance verdict against your
 chosen framework (SOC 2, GDPR, HIPAA, ISO 27001, or PCI DSS). Every module
 streams its reasoning live — nothing is a black box.
 
-Built for the eMerge AI Hackathon. Powered by Claude (Haiku 4.5, Sonnet 4.6,
-Opus 4.7) + Supabase.
+Built for the eMerge AI Hackathon. Powered by Claude (Haiku 4.5 + Opus 4.7)
+and Supabase.
 
 ---
 
