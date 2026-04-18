@@ -1,9 +1,9 @@
-export type AuditStreamEvent =
-  | { type: "status"; phase: string }
-  | { type: "delta"; text: string }
-  | { type: "thinking"; text: string }
-  | { type: "result"; payload: unknown }
-  | { type: "error"; message: string };
+import type { AuditStreamEvent } from "./types";
+
+// Re-export so existing `import { AuditStreamEvent } from "@/lib/sse"` call
+// sites keep working. The canonical definition lives in lib/types.ts so the
+// producer (this file) and the consumer (stream-client.ts) share it.
+export type { AuditStreamEvent };
 
 export function createAuditStream(
   producer: (send: (ev: AuditStreamEvent) => void) => Promise<void>,

@@ -161,6 +161,19 @@ export type ReviewResult = {
   defer: ReviewDefer[];
 };
 
+// NDJSON event shape streamed from every audit route to the client. Kept
+// here (not in sse.ts / stream-client.ts) so the producer side and the
+// consumer side literally share one declaration — no risk of the two
+// drifting. `lib/sse.ts` is server-only (Node runtime, uses ReadableStream)
+// and `lib/stream-client.ts` is browser-only, so they can't directly
+// import each other.
+export type AuditStreamEvent =
+  | { type: "status"; phase: string }
+  | { type: "delta"; text: string }
+  | { type: "thinking"; text: string }
+  | { type: "result"; payload: unknown }
+  | { type: "error"; message: string };
+
 export type AuditRunRow = {
   id: string;
   created_at: string;

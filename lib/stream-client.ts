@@ -1,9 +1,9 @@
-export type AuditStreamEvent =
-  | { type: "status"; phase: string }
-  | { type: "delta"; text: string }
-  | { type: "thinking"; text: string }
-  | { type: "result"; payload: unknown }
-  | { type: "error"; message: string };
+import type { AuditStreamEvent } from "./types";
+
+// Re-export so existing `import { AuditStreamEvent } from "@/lib/stream-client"`
+// call sites keep working. The canonical definition lives in lib/types.ts so
+// the server producer and this browser consumer share it.
+export type { AuditStreamEvent };
 
 export async function consumeNdjsonStream(
   response: Response,
