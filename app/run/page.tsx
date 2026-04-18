@@ -457,10 +457,10 @@ async function runPipeline(
         selectedPaths: p.repoPaths.length > 0 ? p.repoPaths : undefined,
       }),
     });
-    const ghJson = await ghRes.json();
-    if (!ghRes.ok) throw new Error(ghJson?.error ?? "GitHub fetch failed");
+    const ghJson = await readJsonOrThrow(ghRes, "Ingest (/api/github)");
+    if (!ghRes.ok) throw new Error((ghJson?.error as string) ?? "GitHub fetch failed");
 
-    const files = ghJson.files ?? [];
+    const files = (ghJson.files as Array<{ path: string; content: string; language: string; bytes: number; truncated: boolean }>) ?? [];
     if (files.length === 0) {
       throw new Error("No files matched the selected paths");
     }
@@ -475,9 +475,9 @@ async function runPipeline(
           text: p.policyText,
         }),
       });
-      const docsJson = await docsRes.json();
-      if (!docsRes.ok) throw new Error(docsJson?.error ?? "Policy parse failed");
-      docs = docsJson.docs ?? [];
+      const docsJson = await readJsonOrThrow(docsRes, "Policy parse (/api/parse-docs)");
+      if (!docsRes.ok) throw new Error((docsJson?.error as string) ?? "Policy parse failed");
+      docs = (docsJson.docs as typeof docs) ?? [];
     }
 
     h.setIngest({
@@ -591,7 +591,7 @@ async function runPipeline(
         companyName: p.companyName,
         framework: p.framework,
         repoUrl: p.repoUrl,
-        repoBranch: ghJson.branch ?? null,
+        repoBranch: (ghJson.branch as string | undefined) ?? null,
         fileCount: files.length,
         docCount: docs.length,
         codeResult,
@@ -600,18 +600,46 @@ async function runPipeline(
         reviewResult,
       }),
     });
-    const saveJson = await saveRes.json();
+    const saveJson = await readJsonOrThrow(saveRes, "Save (/api/audit/runs)");
     if (!saveRes.ok || !saveJson?.id) {
-      throw new Error(saveJson?.error ?? "Save failed");
+      throw new Error((saveJson?.error as string) ?? "Save failed");
     }
 
     sessionStorage.removeItem("lexitude:pending");
     h.setOverall("Complete");
-    h.onSaved(saveJson.id);
+    h.onSaved(saveJson.id as string);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     h.onFatal(msg);
   }
+}
+
+// Safely read a fetch response as JSON. When a serverless function times
+// out or crashes, Vercel returns its default HTML error page — calling
+// `res.json()` on that throws `Unexpected token '<', "<!DOCTYPE "...`
+// which tells the user nothing useful. This helper inspects Content-Type
+// first and surfaces the real status + body snippet instead. It should be
+// used on every non-streaming fetch in this pipeline.
+async function readJsonOrThrow(
+  res: Response,
+  label: string,
+): Promise<Record<string, unknown>> {
+  const ct = res.headers.get("content-type") ?? "";
+  if (ct.includes("application/json")) {
+    return (await res.json()) as Record<string, unknown>;
+  }
+  // Not JSON — read the body as text so we can tell the user *why*. Vercel
+  // timeouts, Next 404s, and reverse-proxy errors all land here.
+  const text = await res.text();
+  const hint =
+    res.status === 504 || /timeout/i.test(text)
+      ? " (function timed out — check Vercel function logs and maxDuration)"
+      : res.status === 500
+      ? " (server error — check Vercel function logs and env vars)"
+      : "";
+  throw new Error(
+    `${label} returned ${res.status} ${res.statusText}${hint}: ${text.slice(0, 240)}`,
+  );
 }
 
 async function streamAudit(
