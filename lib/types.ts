@@ -1,4 +1,22 @@
-export type Framework = "SOC2" | "GDPR" | "HIPAA";
+export type Framework = "SOC2" | "GDPR" | "HIPAA" | "ISO27001" | "PCIDSS";
+
+const FRAMEWORK_DISPLAY_NAMES: Record<Framework, string> = {
+  SOC2: "SOC 2",
+  GDPR: "GDPR",
+  HIPAA: "HIPAA",
+  ISO27001: "ISO 27001",
+  PCIDSS: "PCI DSS",
+};
+
+// Map the stored enum value (e.g. "PCIDSS") to the human-readable display
+// name (e.g. "PCI DSS"). Unknown strings pass through unchanged so legacy
+// rows with free-form values still render.
+export function frameworkDisplayName(f: Framework | string): string {
+  if (f in FRAMEWORK_DISPLAY_NAMES) {
+    return FRAMEWORK_DISPLAY_NAMES[f as Framework];
+  }
+  return String(f);
+}
 export type RiskLevel = "low" | "medium" | "high" | "critical";
 export type Severity = RiskLevel;
 
