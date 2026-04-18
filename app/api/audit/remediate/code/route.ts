@@ -60,7 +60,7 @@ Write the PR-ready fix guide in the required Markdown structure. Stream the Mark
 
     const stream = client.messages.stream({
       model: CODE_MODEL, // Haiku 4.5 — fast and cheap for mechanical per-finding remediation
-      max_tokens: 2500,
+      max_tokens: 4000,
       system: [
         {
           type: "text",

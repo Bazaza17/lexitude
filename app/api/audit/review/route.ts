@@ -91,7 +91,10 @@ Stream short commentary as you reason, then emit the final JSON block.`;
       // time and is plenty capable for this pattern (structured input, rigid
       // output schema). Haiku doesn't accept `effort` or `thinking`, so
       // neither is set.
-      max_tokens: 3500,
+      // 6000 gives headroom for a full calibration report even when prior
+      // analysts produced many findings. Prompt caps the output at ~5 items
+      // per category, so we should rarely get close.
+      max_tokens: 6000,
       system: [
         {
           type: "text",

@@ -58,7 +58,10 @@ Use extended thinking to reason about the interactions before you write. Then st
 
     const stream = client.messages.stream({
       model: RISK_MODEL,
-      max_tokens: 6000,
+      // 12000 leaves comfortable headroom even after the prompt caps topInsights
+      // at 3 and priorityActions at 3 — protects against long adaptive thinking
+      // runs that eat into the output budget. Opus 4.7 has ample ceiling here.
+      max_tokens: 12000,
       thinking: { type: "adaptive", display: "summarized" },
       output_config: { effort: "medium" },
       system: [

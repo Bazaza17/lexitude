@@ -61,7 +61,7 @@ Draft the policy section that closes this gap. Follow the required Markdown stru
 
     const stream = client.messages.stream({
       model: POLICY_MODEL, // Sonnet 4.6 — nuanced prose for legal drafting
-      max_tokens: 3000,
+      max_tokens: 5000,
       system: [
         {
           type: "text",

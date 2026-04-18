@@ -71,7 +71,7 @@ Give a fast first impression — stream ~4-6 lines of commentary then emit the J
 
     const stream = client.messages.stream({
       model: CODE_MODEL, // Haiku 4.5 — this is the fast path
-      max_tokens: 1500,
+      max_tokens: 2500,
       system: [
         {
           type: "text",

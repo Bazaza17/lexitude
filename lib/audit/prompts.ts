@@ -65,7 +65,7 @@ You specialize in ${framework}. Reference framework context:
 ${FRAMEWORK_RULES[framework]}
 
 When auditing a codebase, you will:
-1) Stream a concise running commentary as you analyze: one short line per file that notes what you found, in the form "<path>: <finding>" or "<path>: clean". Keep commentary under ~8 words per line.
+1) Stream concise commentary ONLY for files with findings — skip clean files silently. One short line per flagged file in the form "<path>: <finding>". Keep each line under ~8 words. Do not announce clean files; the UI assumes silence = clean.
 2) After analyzing every file, emit a single fenced JSON block (exactly one) with the complete structured result.
 
 The JSON schema you MUST produce is:
@@ -73,7 +73,7 @@ The JSON schema you MUST produce is:
 {
   "score": 0-100 integer (100 = perfect, 0 = catastrophic),
   "riskLevel": "low" | "medium" | "high" | "critical",
-  "summary": "2-3 sentence executive summary",
+  "summary": "1-2 sentence executive summary",
   "findings": [
     {
       "file": "relative/path",
@@ -99,6 +99,8 @@ Rules:
 - Cite real line numbers only when you can see them; otherwise use null. Do not fabricate.
 - Every finding MUST include a controlId tying it to a specific ${framework} control. If no exact control applies, pick the nearest parent (e.g. "CC6" or "§164.312"). Do not leave controlId empty or "N/A".
 - Severity "critical" is reserved for: exposed secrets, plaintext PII sent to third parties, obvious auth bypass, injection vectors, and clear regulatory violations.
+- **Cap findings at 20 total.** Prioritize severity. If the same issue recurs across many files (e.g. missing authz on 8 routes), emit ONE finding that names the pattern with the most severe occurrence as the primary file, and mention the recurrence count in the recommendation. Do not repeat near-identical findings.
+- Keep \`issue\` and \`recommendation\` to exactly one sentence each.
 - Focus on ${framework}-relevant risks above generic style issues.
 - Output the JSON block exactly once, at the end, after the commentary. Do not wrap the JSON in prose.`;
 }
@@ -125,7 +127,7 @@ Stream a running commentary (short lines) as you work through each policy sectio
 {
   "score": 0-100,
   "riskLevel": "low" | "medium" | "high" | "critical",
-  "summary": "2-3 sentence executive summary",
+  "summary": "1-2 sentence executive summary",
   "conflicts": [
     { "docs": ["filename1","filename2"], "severity": "low|medium|high|critical", "controlId": "${framework} control reference (e.g. ${CONTROL_ID_EXAMPLES[framework].split(",")[0]})", "issue": "...", "recommendation": "..." }
   ],
@@ -141,6 +143,9 @@ Stream a running commentary (short lines) as you work through each policy sectio
 Rules:
 - Every conflict, gap, and code-vs-policy conflict MUST include a controlId. Examples for ${framework}: ${CONTROL_ID_EXAMPLES[framework]}.
 - Scoring rubric mirrors code audit: critical caps at 35, high caps at 65. Subtract per finding.
+- **Cap total findings at ~15 across all three arrays combined** (conflicts + gaps + codeVsPolicyConflicts). Prioritize severity. Collapse repeated or near-identical items into one entry.
+- Keep every \`issue\` and \`recommendation\` to one sentence.
+- Stream ONLY meaningful commentary (skip "document X looks fine" filler). Silence is acceptable between findings.
 - Output the JSON block exactly once at the end.`;
 }
 
@@ -182,8 +187,9 @@ Scoring rubric:
 
 Rules:
 - \`conflicts\` MUST be empty (there are no documents to conflict with each other).
-- \`gaps\` MUST include the full required policy set for ${framework} — at least 6 policies. Each one MUST have a specific controlId.
-- If code findings are present, every HIGH or CRITICAL code finding MUST have a matching \`codeVsPolicyConflicts\` entry.
+- \`gaps\` MUST include the core required policy set for ${framework} — **6 to 8 policies**, not more. Each one MUST have a specific controlId.
+- If code findings are present, every HIGH or CRITICAL code finding MUST have a matching \`codeVsPolicyConflicts\` entry — but cap at the top 10 most severe.
+- Keep every \`issue\` and \`recommendation\` to one sentence; keep \`summary\` to 1-2 sentences.
 - Output the JSON block exactly once at the end. No prose after the JSON.`;
 }
 
@@ -211,9 +217,9 @@ Use the extended thinking space to reason carefully about the interactions betwe
 {
   "overallScore": 0-100,
   "riskLevel": "low" | "medium" | "high" | "critical",
-  "executiveSummary": "one paragraph — what would you tell the board in 30 seconds?",
+  "executiveSummary": "3 sentences max — what would you tell the board in 30 seconds?",
   "topInsights": [
-    { "title": "5-8 word headline", "severity": "low|medium|high|critical", "controlId": "${framework} control reference", "description": "2-3 sentences", "evidence": ["bullet pointing at code file or policy quote", "..."] }
+    { "title": "5-8 word headline", "severity": "low|medium|high|critical", "controlId": "${framework} control reference", "description": "1-2 sentences", "evidence": ["1-2 bullets max, pointing at code file or policy quote"] }
   ],
   "priorityActions": [
     { "rank": 1, "title": "short action", "owner": "Engineering|Legal|Security|Product|Exec", "timeframe": "immediate|30 days|90 days", "controlIds": ["${framework} controls closed by this action"], "closes": ["list of finding ids or descriptions this would close"] }
@@ -222,8 +228,8 @@ Use the extended thinking space to reason carefully about the interactions betwe
 \`\`\`
 
 Rules:
-- Return exactly 5 topInsights, ranked by severity then by leverage.
-- Return 3–7 priorityActions.
+- Return **exactly 3 topInsights**, ranked by severity then by leverage. Pick the three highest-leverage — do not pad.
+- Return **exactly 3 priorityActions**.
 - Every insight and priority action MUST reference specific ${framework} controls. Examples: ${CONTROL_ID_EXAMPLES[framework]}.
 - The overallScore should reflect the union of code and policy exposure and, importantly, the contradictions between them — a company with a perfect policy and terrible code is not "average", it is "high risk with legal aggravator".
 - Output the JSON block exactly once at the end.`;
@@ -401,5 +407,7 @@ Rules:
 - adjustedScore is YOUR score given the raw evidence. Start from the code + policy scores, then move up if you find miscalibrated findings or missed risks, move down if you find hallucinations.
 - Every missedRisk and actNow item MUST include controlId(s) grounded in ${framework}. Examples: ${CONTROL_ID_EXAMPLES[framework]}.
 - Exactly 3 items in actNow, exactly 3 in defer.
+- **Cap hallucinations at 5, miscalibrations at 5, missedRisks at 3.** Surface only the most consequential items; do not pad.
+- Keep \`verdict\` to 2 sentences, every \`rationale\` and \`description\` to 1-2 sentences.
 - Output the JSON block exactly once at the end.`;
 }
