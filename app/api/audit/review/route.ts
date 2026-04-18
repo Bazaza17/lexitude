@@ -2,16 +2,42 @@ import { NextRequest } from "next/server";
 import { getAnthropic, REVIEW_MODEL } from "@/lib/anthropic";
 import { createAuditStream, extractJsonBlock } from "@/lib/sse";
 import { reviewerSystemPrompt, type Framework } from "@/lib/audit-prompts";
+import type { CodeResult, PolicyResult } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
 
-const FRAMEWORKS: Framework[] = ["SOC2", "GDPR", "HIPAA"];
-const MAX_PAYLOAD_CHARS = 60_000;
+const FRAMEWORKS: Framework[] = ["SOC2", "GDPR", "HIPAA", "ISO27001", "PCIDSS"];
+const MAX_PAYLOAD_CHARS = 40_000;
 
 function clip(obj: unknown, max: number): string {
   const s = JSON.stringify(obj ?? null, null, 2);
   return s.length > max ? s.slice(0, max) + "\n/* ...truncated for length */" : s;
+}
+
+// Review only needs the raw findings + the scores to anchor its calibration.
+// Strip the summary/stats prose — Sonnet spends noticeable time chewing on it
+// and it isn't load-bearing for a calibration pass.
+function trimCodeForReview(r: unknown): object | null {
+  if (!r || typeof r !== "object") return null;
+  const c = r as Partial<CodeResult>;
+  return {
+    score: c.score,
+    riskLevel: c.riskLevel,
+    findings: c.findings ?? [],
+  };
+}
+
+function trimPolicyForReview(r: unknown): object | null {
+  if (!r || typeof r !== "object") return null;
+  const p = r as Partial<PolicyResult>;
+  return {
+    score: p.score,
+    riskLevel: p.riskLevel,
+    conflicts: p.conflicts ?? [],
+    gaps: p.gaps ?? [],
+    codeVsPolicyConflicts: p.codeVsPolicyConflicts ?? [],
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -23,11 +49,10 @@ export async function POST(req: NextRequest) {
     typeof body?.companyName === "string" ? body.companyName : "the company";
   const codeResult = body?.codeResult ?? null;
   const policyResult = body?.policyResult ?? null;
-  const riskResult = body?.riskResult ?? null;
 
-  if (!codeResult && !policyResult && !riskResult) {
+  if (!codeResult && !policyResult) {
     return Response.json(
-      { error: "At least one of codeResult/policyResult/riskResult is required" },
+      { error: "At least one of codeResult/policyResult is required" },
       { status: 400 },
     );
   }
@@ -41,32 +66,29 @@ export async function POST(req: NextRequest) {
     const userMsg = `Company: ${companyName}
 Framework: ${framework}
 
-Three prior analysts produced the following audit payloads. Independently review them for hallucinations, severity miscalibrations, and missed cross-cutting risk. Be skeptical — do not rubber-stamp.
+Two prior analysts produced the following audit payloads (findings + scores only; summaries and stats omitted — re-derive your verdict from the raw findings). Independently review them for hallucinations, severity miscalibrations, and missed cross-cutting risk. Be skeptical — do not rubber-stamp.
 
 === CODE AUDIT ===
 \`\`\`json
-${clip(codeResult, MAX_PAYLOAD_CHARS)}
+${clip(trimCodeForReview(codeResult), MAX_PAYLOAD_CHARS)}
 \`\`\`
 
 === POLICY AUDIT ===
 \`\`\`json
-${clip(policyResult, MAX_PAYLOAD_CHARS)}
+${clip(trimPolicyForReview(policyResult), MAX_PAYLOAD_CHARS)}
 \`\`\`
 
-=== RISK SYNTHESIS ===
-\`\`\`json
-${clip(riskResult, MAX_PAYLOAD_CHARS)}
-\`\`\`
+A separate risk synthesis is running in parallel — do not critique it here. Focus on calibrating the raw code and policy findings.
 
-Use extended thinking to calibrate carefully. Stream short commentary as you reason, then emit the final JSON block.`;
+Stream short commentary as you reason, then emit the final JSON block.`;
 
     let full = "";
 
     const stream = client.messages.stream({
       model: REVIEW_MODEL,
-      max_tokens: 8000,
+      max_tokens: 3500,
       thinking: { type: "adaptive", display: "summarized" },
-      output_config: { effort: "medium" },
+      output_config: { effort: "low" },
       system: [
         {
           type: "text",
@@ -105,7 +127,15 @@ Use extended thinking to calibrate carefully. Stream short commentary as you rea
 
     const parsed = extractJsonBlock(full);
     if (!parsed || typeof parsed !== "object") {
-      send({ type: "error", message: "Could not parse final JSON block from model output." });
+      console.error("[review] JSON parse failed", {
+        stopReason: finalMessage.stop_reason,
+        length: full.length,
+        tail: full.slice(-800),
+      });
+      send({
+        type: "error",
+        message: `Could not parse final JSON block from model output (stop_reason=${finalMessage.stop_reason}, length=${full.length}).`,
+      });
       return;
     }
 

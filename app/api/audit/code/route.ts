@@ -8,7 +8,7 @@ export const maxDuration = 120;
 
 type RepoFile = { path: string; content: string; language?: string };
 
-const FRAMEWORKS: Framework[] = ["SOC2", "GDPR", "HIPAA"];
+const FRAMEWORKS: Framework[] = ["SOC2", "GDPR", "HIPAA", "ISO27001", "PCIDSS"];
 const MAX_TOTAL_CHARS = 250_000;
 
 function renderFiles(files: RepoFile[]): { text: string; truncated: boolean; included: number } {
@@ -106,7 +106,15 @@ Audit the code bundle above for ${framework} compliance exposure. Stream comment
 
     const parsed = extractJsonBlock(full);
     if (!parsed || typeof parsed !== "object") {
-      send({ type: "error", message: "Could not parse final JSON block from model output." });
+      console.error("[code] JSON parse failed", {
+        stopReason: finalMessage.stop_reason,
+        length: full.length,
+        tail: full.slice(-800),
+      });
+      send({
+        type: "error",
+        message: `Could not parse final JSON block from model output (stop_reason=${finalMessage.stop_reason}, length=${full.length}).`,
+      });
       return;
     }
 

@@ -23,7 +23,7 @@ const features = [
   {
     tag: "03",
     title: "Framework-aware scoring",
-    desc: "Claude scores your code against SOC 2, GDPR, or HIPAA — not a checklist, a real reading of what each framework actually requires.",
+    desc: "Claude scores your code against SOC 2, GDPR, HIPAA, ISO 27001, or PCI DSS — not a checklist, a real reading of what each framework actually requires.",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <path d="M12 3l8 4v6c0 5-3.5 7.5-8 8-4.5-.5-8-3-8-8V7l8-4Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />

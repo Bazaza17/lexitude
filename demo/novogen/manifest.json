@@ -1,0 +1,44 @@
+{
+  "scenario": "NovoGen Health",
+  "companyName": "NovoGen Health",
+  "industry": "Biotech — Consumer Genomics + Clinical Decision Support",
+  "headcount": 95,
+  "regions": ["US"],
+  "framework": "HIPAA",
+  "repoPath": "demo/novogen/repo",
+  "policyPaths": [
+    "demo/novogen/policies/HIPAA_Privacy_Policy.md",
+    "demo/novogen/policies/AI_Clinical_Use_Policy.md"
+  ],
+  "expectedFindings": {
+    "code": [
+      { "id": "phi-in-response", "file": "app/api/patients/[id]/route.ts", "severity": "critical", "issue": "Returns full patient record (SSN, DOB, diagnosis, genomic variants) with no authentication or authorization check." },
+      { "id": "phi-in-logs", "file": "app/api/patients/[id]/route.ts", "severity": "critical", "issue": "Logs complete patient record including SSN and genomic data to stdout on every fetch." },
+      { "id": "no-audit-trail", "file": "app/api/lab/results/route.ts", "severity": "high", "issue": "Lab result ingestion writes PHI with no audit log of who accessed/modified which record." },
+      { "id": "sql-injection-lab", "file": "app/api/lab/results/route.ts", "severity": "critical", "issue": "patientId concatenated into SQL string — injection vector with PHI impact." },
+      { "id": "phi-to-third-party-ai", "file": "app/api/ai/genomic-assistant/route.ts", "severity": "critical", "issue": "Patient name, DOB, and raw genomic variants sent to Anthropic API with no de-identification and no BAA referenced." },
+      { "id": "ai-no-clinician-review", "file": "app/api/ai/genomic-assistant/route.ts", "severity": "critical", "issue": "Clinical AI interpretation streamed directly to end-user with no licensed clinician review or human-in-the-loop." },
+      { "id": "ai-diagnostic-claims", "file": "app/api/ai/genomic-assistant/route.ts", "severity": "high", "issue": "System prompt instructs the model to produce diagnostic conclusions and treatment recommendations." },
+      { "id": "plaintext-phi-db", "file": "lib/db.ts", "severity": "high", "issue": "Database connection uses ssl:false; PHI columns (ssn, diagnosis, genomic_data) stored in plaintext with no field-level encryption." },
+      { "id": "no-session-timeout", "file": "middleware.ts", "severity": "high", "issue": "No automatic session timeout — HIPAA §164.312(a)(2)(iii) requires automatic logoff." },
+      { "id": "cors-wildcard-phi", "file": "middleware.ts", "severity": "high", "issue": "CORS Access-Control-Allow-Origin:* with credentials on routes that return PHI." },
+      { "id": "phi-in-localstorage", "file": "components/PatientForm.tsx", "severity": "critical", "issue": "Patient SSN, DOB, and genomic consent data persisted to localStorage — PHI on client disk." },
+      { "id": "shared-admin-creds", "file": "lib/db.ts", "severity": "high", "issue": "Single shared DB user with full read/write; no unique per-user identity (violates §164.312(a)(2)(i))." }
+    ],
+    "policyVsCode": [
+      { "policy": "All PHI must be encrypted at rest and in transit (AES-256 at rest, TLS 1.2+ in transit)", "code": "lib/db.ts uses ssl:false and stores PHI in plaintext columns" },
+      { "policy": "All PHI access must be logged with user identity, timestamp, and record accessed", "code": "app/api/patients/[id]/route.ts and app/api/lab/results/route.ts do not write any audit log entries" },
+      { "policy": "PHI must be de-identified before being sent to any third-party API including foundation-model providers", "code": "app/api/ai/genomic-assistant/route.ts forwards patient name, DOB, and genomic variants to Anthropic unchanged" },
+      { "policy": "AI-generated clinical interpretations must be reviewed by a licensed clinician before being shown to patients", "code": "app/api/ai/genomic-assistant/route.ts streams raw model output directly to patients" },
+      { "policy": "Each workforce user must have a unique identifier (§164.312(a)(2)(i))", "code": "lib/db.ts connects as a single shared 'admin' user" },
+      { "policy": "Systems that access PHI must enforce automatic session timeout after 15 minutes of inactivity", "code": "middleware.ts has no session timeout or logoff enforcement" },
+      { "policy": "PHI must never be persisted in client-side storage (localStorage, sessionStorage, cookies)", "code": "components/PatientForm.tsx writes patient SSN, DOB, and genomic data to localStorage" }
+    ],
+    "scoreTargets": {
+      "code": 14,
+      "policy": 28,
+      "overall": 12,
+      "riskLevel": "critical"
+    }
+  }
+}

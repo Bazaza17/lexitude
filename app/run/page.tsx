@@ -141,7 +141,11 @@ export default function RunAuditPage() {
               <ModuleCard
                 number="02"
                 title="Policy Intelligence"
-                subtitle="Sonnet 4.6 · reading policies, flagging conflicts"
+                subtitle={
+                  pending.policyFiles.length === 0 && !pending.policyText.trim()
+                    ? "Sonnet 4.6 · inferring required policies from framework + code"
+                    : "Sonnet 4.6 · reading policies, flagging conflicts"
+                }
                 state={policy}
               />
               <ModuleCard
@@ -153,7 +157,7 @@ export default function RunAuditPage() {
               <ModuleCard
                 number="04"
                 title="Audit Review"
-                subtitle="Sonnet 4.6 · independent critic pass"
+                subtitle="Sonnet 4.6 · independent calibration (runs in parallel with Risk)"
                 state={review}
               />
             </div>
@@ -510,49 +514,73 @@ async function runPipeline(
       files,
     });
 
-    let policyPromise: Promise<unknown> | null = null;
-    if (docs.length > 0) {
-      h.setPolicy({ ...emptyModule, status: "running" });
-      policyPromise = streamAudit(h.setPolicy, "/api/audit/policy", {
-        companyName: p.companyName,
-        framework: p.framework,
-        docs,
-      });
-    } else {
-      h.setPolicy({
-        status: "done",
-        commentary: "No policy documents provided — module skipped.",
-        thinking: "",
-        result: null,
-        error: null,
-      });
+    // No-policies mode: if the user didn't upload anything, we still run
+    // Policy — but with docs:[] the backend switches to "inferred gap"
+    // mode, producing the required-policy list this company needs. This
+    // keeps the downstream Risk + Review modules (and the drafting engine)
+    // working on a real PolicyResult rather than null. See
+    // policyAuditNoDocsSystemPrompt in lib/audit-prompts.ts.
+    h.setPolicy({ ...emptyModule, status: "running" });
+    const policyPromise = streamAudit(h.setPolicy, "/api/audit/policy", {
+      companyName: p.companyName,
+      framework: p.framework,
+      docs,
+    });
+
+    // Use allSettled so a Policy failure doesn't dead-end the whole run.
+    // The module's own card already shows the error; we just need to keep
+    // Risk + Review flowing against whatever data we do have.
+    const [codeSettled, policySettled] = await Promise.allSettled([
+      codePromise,
+      policyPromise,
+    ]);
+    const codeResult = codeSettled.status === "fulfilled" ? codeSettled.value : null;
+    const policyResult =
+      policySettled.status === "fulfilled" ? policySettled.value : null;
+
+    // If Code failed outright, we can't produce anything useful — bail.
+    if (!codeResult) {
+      throw new Error(
+        codeSettled.status === "rejected"
+          ? codeSettled.reason?.message ?? "Code audit failed"
+          : "Code audit returned no result",
+      );
     }
 
-    const [codeResult, policyResult] = await Promise.all([
-      codePromise,
-      policyPromise ?? Promise.resolve(null),
-    ]);
-
-    // --- Risk synthesis ---
+    // --- Risk synthesis + Reviewer (parallel) ---
+    // Reviewer is now an independent second-opinion on code+policy, not a
+    // meta-critique of Risk — so we can run both at once. Risk is the long
+    // tail (Opus extended thinking); running Review in parallel saves ~Review
+    // duration from total wall-clock.
     h.setRisk({ ...emptyModule, status: "running" });
-    h.setOverall("Module 3 — risk synthesis (Opus 4.7, extended thinking)");
-    const riskResult = await streamAudit(h.setRisk, "/api/audit/risk", {
+    h.setReview({ ...emptyModule, status: "running" });
+    h.setOverall(
+      policyResult
+        ? "Parallel synthesis — risk (Opus 4.7) · review (Sonnet 4.6, independent calibration)"
+        : "Parallel synthesis (policy unavailable) — risk + review running on code only",
+    );
+
+    const riskPromise = streamAudit(h.setRisk, "/api/audit/risk", {
       companyName: p.companyName,
       framework: p.framework,
       codeResult,
       policyResult,
     });
 
-    // --- Reviewer / critic pass ---
-    h.setReview({ ...emptyModule, status: "running" });
-    h.setOverall("Module 4 — audit review (Opus 4.7, critic pass)");
-    const reviewResult = await streamAudit(h.setReview, "/api/audit/review", {
+    const reviewPromise = streamAudit(h.setReview, "/api/audit/review", {
       companyName: p.companyName,
       framework: p.framework,
       codeResult,
       policyResult,
-      riskResult,
     });
+
+    const [riskSettled, reviewSettled] = await Promise.allSettled([
+      riskPromise,
+      reviewPromise,
+    ]);
+    const riskResult = riskSettled.status === "fulfilled" ? riskSettled.value : null;
+    const reviewResult =
+      reviewSettled.status === "fulfilled" ? reviewSettled.value : null;
 
     // --- Save run ---
     h.setOverall("Saving run");

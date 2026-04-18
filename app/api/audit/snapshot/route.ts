@@ -8,7 +8,7 @@ export const maxDuration = 45;
 
 type RepoFile = { path: string; content: string; language?: string };
 
-const FRAMEWORKS: Framework[] = ["SOC2", "GDPR", "HIPAA"];
+const FRAMEWORKS: Framework[] = ["SOC2", "GDPR", "HIPAA", "ISO27001", "PCIDSS"];
 const MAX_PKG_CHARS = 6_000;
 const MAX_README_CHARS = 4_000;
 const MAX_TREE_ENTRIES = 250;

@@ -1,14 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, use } from "react";
-import { motion } from "framer-motion";
+import { Fragment, useEffect, useRef, useState, use } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { AppHeader } from "@/components/app/AppHeader";
 import { Sparkline } from "@/components/app/Sparkline";
 import { useCountUp } from "@/lib/useCountUp";
+import { consumeNdjsonStream, type AuditStreamEvent } from "@/lib/stream-client";
+import { frameworkDisplayName } from "@/lib/types";
 import type {
   AuditRunRow,
   CodeFinding,
+  Framework,
   PolicyConflict,
   PolicyGap,
   CodeVsPolicy,
@@ -103,6 +106,24 @@ export default function RunResultPage({
           <>
             <button
               type="button"
+              onClick={() =>
+                window.open(`/report/${run.id}?autoprint=1`, "_blank", "noopener")
+              }
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-xs font-medium text-foreground transition-colors hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M6 9V4h12v5M6 18h12v4H6zM4 9h16v9H4z"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              Export PDF
+            </button>
+            <button
+              type="button"
               onClick={() => downloadJson(run)}
               className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface px-3 text-xs font-medium text-foreground transition-colors hover:border-border-strong focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
@@ -115,7 +136,7 @@ export default function RunResultPage({
                   strokeLinejoin="round"
                 />
               </svg>
-              Download JSON
+              Raw JSON
             </button>
             <Link
               href="/new"
@@ -137,7 +158,7 @@ export default function RunResultPage({
         <div className="relative mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
           <div className="mb-8">
             <p className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
-              {run.framework} · {new Date(run.created_at).toLocaleString()}
+              {frameworkDisplayName(run.framework)} · {new Date(run.created_at).toLocaleString()}
               {run.repo_url ? (
                 <>
                   {" · "}
@@ -252,8 +273,19 @@ export default function RunResultPage({
 
           <div className="py-8">
             {tab === "insights" && <InsightsTab risk={risk} />}
-            {tab === "code" && <CodeTab findings={code?.findings ?? []} />}
-            {tab === "policy" && <PolicyTab policy={policy} />}
+            {tab === "code" && (
+              <CodeTab
+                findings={code?.findings ?? []}
+                framework={run.framework}
+              />
+            )}
+            {tab === "policy" && (
+              <PolicyTab
+                policy={policy}
+                framework={run.framework}
+                companyName={run.company_name}
+              />
+            )}
             {tab === "review" && <ReviewTab review={review} />}
           </div>
         </div>
@@ -507,7 +539,15 @@ function InsightsTab({ risk }: { risk: AuditRunRow["risk_result"] }) {
   );
 }
 
-function CodeTab({ findings }: { findings: CodeFinding[] }) {
+function CodeTab({
+  findings,
+  framework,
+}: {
+  findings: CodeFinding[];
+  framework: Framework;
+}) {
+  const [expanded, setExpanded] = useState<number | null>(null);
+
   if (findings.length === 0)
     return <p className="text-sm text-muted-foreground">No code findings.</p>;
 
@@ -525,42 +565,231 @@ function CodeTab({ findings }: { findings: CodeFinding[] }) {
             <th className="px-4 py-2 font-normal">Category</th>
             <th className="px-4 py-2 font-normal">File</th>
             <th className="px-4 py-2 font-normal">Issue</th>
+            <th className="px-4 py-2" />
           </tr>
         </thead>
         <tbody>
-          {sorted.map((f, idx) => (
-            <tr
-              key={idx}
-              className="border-t border-border align-top transition-colors hover:bg-surface-elevated/30"
-            >
-              <td className="px-4 py-3">
-                <SeverityBadge level={f.severity} />
-              </td>
-              <td className="px-4 py-3">
-                <ControlChip id={f.controlId} />
-              </td>
-              <td className="px-4 py-3 font-mono text-[11px] text-muted-foreground">
-                {f.category}
-              </td>
-              <td className="px-4 py-3 font-mono text-[11px] text-foreground/80">
-                {f.file}
-                {f.line ? `:${f.line}` : ""}
-              </td>
-              <td className="px-4 py-3">
-                <p className="text-foreground/90">{f.issue}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  → {f.recommendation}
-                </p>
-              </td>
-            </tr>
-          ))}
+          {sorted.map((f, idx) => {
+            const isOpen = expanded === idx;
+            return (
+              <Fragment key={idx}>
+                <tr
+                  className="border-t border-border align-top transition-colors hover:bg-surface-elevated/30"
+                >
+                  <td className="px-4 py-3">
+                    <SeverityBadge level={f.severity} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <ControlChip id={f.controlId} />
+                  </td>
+                  <td className="px-4 py-3 font-mono text-[11px] text-muted-foreground">
+                    {f.category}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-[11px] text-foreground/80">
+                    {f.file}
+                    {f.line ? `:${f.line}` : ""}
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="text-foreground/90">{f.issue}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      → {f.recommendation}
+                    </p>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      onClick={() => setExpanded(isOpen ? null : idx)}
+                      className={`inline-flex h-7 items-center rounded-md border px-2.5 font-mono text-[10px] uppercase tracking-widest transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
+                        isOpen
+                          ? "border-foreground/60 bg-surface-elevated text-foreground"
+                          : "border-border bg-surface-elevated/40 text-foreground/90 hover:border-foreground/60"
+                      }`}
+                      aria-expanded={isOpen}
+                    >
+                      {isOpen ? "Close" : "Fix →"}
+                    </button>
+                  </td>
+                </tr>
+                {isOpen && (
+                  <tr className="border-t border-border/60 bg-background/40">
+                    <td colSpan={6} className="px-4 py-3">
+                      <CodeFixPanel finding={f} framework={framework} />
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
 
-function PolicyTab({ policy }: { policy: AuditRunRow["policy_result"] }) {
+function CodeFixPanel({
+  finding,
+  framework,
+}: {
+  finding: CodeFinding;
+  framework: Framework;
+}) {
+  const [status, setStatus] = useState<"idle" | "drafting" | "done" | "error">(
+    "idle",
+  );
+  const [markdown, setMarkdown] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const started = useRef(false);
+
+  async function draft() {
+    if (status === "drafting") return;
+    setStatus("drafting");
+    setMarkdown("");
+    setError(null);
+
+    try {
+      const res = await fetch("/api/audit/remediate/code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          framework,
+          file: finding.file,
+          line: finding.line,
+          severity: finding.severity,
+          category: finding.category,
+          controlId: finding.controlId ?? null,
+          issue: finding.issue,
+          recommendation: finding.recommendation,
+        }),
+      });
+
+      let streamErr: string | null = null;
+      await consumeNdjsonStream(res, (ev: AuditStreamEvent) => {
+        if (ev.type === "delta") {
+          setMarkdown((m) => m + ev.text);
+        } else if (ev.type === "error") {
+          streamErr = ev.message;
+        }
+      });
+
+      if (streamErr) {
+        setStatus("error");
+        setError(streamErr);
+      } else {
+        setStatus("done");
+      }
+    } catch (e) {
+      setStatus("error");
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function copyToClipboard() {
+    try {
+      await navigator.clipboard.writeText(markdown);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // ignore
+    }
+  }
+
+  function downloadMarkdown() {
+    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const slug = finding.file
+      .replace(/[^a-zA-Z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .toLowerCase()
+      .slice(0, 40);
+    a.download = `lexitude-fix-${slug || "finding"}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Auto-kick draft on first mount. Ref-guarded so strict-mode double invocation
+  // doesn't fire two requests.
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    void draft();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="rounded-lg border border-border bg-background/60">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border/60 px-3 py-1.5">
+        <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+          PR-ready fix · {frameworkDisplayName(framework)} · Haiku 4.5
+        </span>
+        <span className="ml-auto font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+          {status === "drafting"
+            ? "Streaming"
+            : status === "done"
+              ? "Ready — review before merge"
+              : status === "error"
+                ? "Error"
+                : ""}
+        </span>
+        {status === "done" && (
+          <>
+            <button
+              type="button"
+              onClick={copyToClipboard}
+              className="inline-flex h-6 items-center rounded-md border border-border bg-surface/40 px-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground transition-colors hover:text-foreground"
+            >
+              {copied ? "Copied ✓" : "Copy"}
+            </button>
+            <button
+              type="button"
+              onClick={downloadMarkdown}
+              className="inline-flex h-6 items-center rounded-md border border-border bg-surface/40 px-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Download .md
+            </button>
+          </>
+        )}
+        {status === "error" && (
+          <button
+            type="button"
+            onClick={() => draft()}
+            className="inline-flex h-6 items-center rounded-md border border-destructive/40 bg-destructive/10 px-2 font-mono text-[10px] uppercase tracking-widest text-destructive transition-colors hover:bg-destructive/20"
+          >
+            Retry
+          </button>
+        )}
+      </div>
+      {error && (
+        <div className="border-b border-destructive/40 bg-destructive/10 px-3 py-2 font-mono text-[11px] text-destructive">
+          {error}
+        </div>
+      )}
+      <div className="max-h-96 overflow-y-auto px-4 py-3">
+        {markdown ? (
+          <pre className="whitespace-pre-wrap font-mono text-[12px] leading-relaxed text-foreground/90">
+            {markdown}
+          </pre>
+        ) : (
+          <p className="font-mono text-[11px] text-muted-foreground">
+            {status === "drafting" ? "Drafting…" : "Preparing…"}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PolicyTab({
+  policy,
+  framework,
+  companyName,
+}: {
+  policy: AuditRunRow["policy_result"];
+  framework: Framework;
+  companyName: string;
+}) {
   if (!policy) return <p className="text-sm text-muted-foreground">No policy audit.</p>;
 
   const hasContent =
@@ -663,11 +892,208 @@ function PolicyTab({ policy }: { policy: AuditRunRow["policy_result"] }) {
                 <p className="mt-1 text-xs text-muted-foreground">
                   → {g.recommendation}
                 </p>
+                <GapDraftPanel
+                  gap={g}
+                  framework={framework}
+                  companyName={companyName}
+                />
               </div>
             ))}
           </div>
         </section>
       )}
+    </div>
+  );
+}
+
+function GapDraftPanel({
+  gap,
+  framework,
+  companyName,
+}: {
+  gap: PolicyGap;
+  framework: Framework;
+  companyName: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [status, setStatus] = useState<"idle" | "drafting" | "done" | "error">(
+    "idle",
+  );
+  const [markdown, setMarkdown] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function draft() {
+    if (status === "drafting") return;
+    setOpen(true);
+    setStatus("drafting");
+    setMarkdown("");
+    setError(null);
+
+    try {
+      const res = await fetch("/api/audit/remediate/policy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          framework,
+          companyName,
+          requirement: gap.requirement,
+          controlId: gap.controlId ?? null,
+          severity: gap.severity,
+          issue: gap.issue,
+          recommendation: gap.recommendation,
+        }),
+      });
+
+      let streamErr: string | null = null;
+      await consumeNdjsonStream(res, (ev: AuditStreamEvent) => {
+        if (ev.type === "delta") {
+          setMarkdown((m) => m + ev.text);
+        } else if (ev.type === "error") {
+          streamErr = ev.message;
+        }
+      });
+
+      if (streamErr) {
+        setStatus("error");
+        setError(streamErr);
+      } else {
+        setStatus("done");
+      }
+    } catch (e) {
+      setStatus("error");
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function copyToClipboard() {
+    try {
+      await navigator.clipboard.writeText(markdown);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Ignore — some browsers block without user gesture context.
+    }
+  }
+
+  function downloadMarkdown() {
+    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const slug =
+      (gap.controlId ?? gap.requirement)
+        .replace(/[^a-zA-Z0-9]+/g, "-")
+        .replace(/^-|-$/g, "")
+        .toLowerCase()
+        .slice(0, 40) || "policy";
+    a.download = `lexitude-policy-${slug}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="mt-3 border-t border-border/60 pt-3">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            if (status === "idle") draft();
+            else setOpen((o) => !o);
+          }}
+          disabled={status === "drafting"}
+          className={`inline-flex h-7 items-center rounded-md border px-2.5 font-mono text-[10px] uppercase tracking-widest transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-60 ${
+            status === "idle"
+              ? "border-border bg-surface-elevated/40 text-foreground/90 hover:border-foreground/60"
+              : "border-border bg-surface/40 text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {status === "idle"
+            ? "Draft remediation →"
+            : status === "drafting"
+              ? "Drafting…"
+              : status === "error"
+                ? "Retry draft"
+                : open
+                  ? "Hide draft"
+                  : "Show draft"}
+        </button>
+        {status === "done" && (
+          <>
+            <button
+              type="button"
+              onClick={copyToClipboard}
+              className="inline-flex h-7 items-center rounded-md border border-border bg-surface/40 px-2.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground transition-colors hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              {copied ? "Copied ✓" : "Copy"}
+            </button>
+            <button
+              type="button"
+              onClick={downloadMarkdown}
+              className="inline-flex h-7 items-center rounded-md border border-border bg-surface/40 px-2.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground transition-colors hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              Download .md
+            </button>
+          </>
+        )}
+        {status === "error" && (
+          <button
+            type="button"
+            onClick={() => draft()}
+            className="inline-flex h-7 items-center rounded-md border border-destructive/40 bg-destructive/10 px-2.5 font-mono text-[10px] uppercase tracking-widest text-destructive transition-colors hover:bg-destructive/20"
+          >
+            Retry
+          </button>
+        )}
+      </div>
+
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="draft"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="mt-3 rounded-lg border border-border bg-background/60">
+              <div className="flex items-center justify-between border-b border-border/60 px-3 py-1.5">
+                <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  Draft policy · {frameworkDisplayName(framework)} · Sonnet 4.6
+                </span>
+                <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  {status === "drafting"
+                    ? "Streaming"
+                    : status === "done"
+                      ? "Draft ready — review before use"
+                      : status === "error"
+                        ? "Error"
+                        : ""}
+                </span>
+              </div>
+              {error && (
+                <div className="border-b border-destructive/40 bg-destructive/10 px-3 py-2 font-mono text-[11px] text-destructive">
+                  {error}
+                </div>
+              )}
+              <div className="max-h-96 overflow-y-auto px-4 py-3">
+                {markdown ? (
+                  <pre className="whitespace-pre-wrap font-mono text-[12px] leading-relaxed text-foreground/90">
+                    {markdown}
+                  </pre>
+                ) : (
+                  <p className="font-mono text-[11px] text-muted-foreground">
+                    {status === "drafting"
+                      ? "Drafting…"
+                      : "No draft yet."}
+                  </p>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

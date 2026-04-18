@@ -6,7 +6,7 @@ import { riskSynthesisSystemPrompt, type Framework } from "@/lib/audit-prompts";
 export const runtime = "nodejs";
 export const maxDuration = 180;
 
-const FRAMEWORKS: Framework[] = ["SOC2", "GDPR", "HIPAA"];
+const FRAMEWORKS: Framework[] = ["SOC2", "GDPR", "HIPAA", "ISO27001", "PCIDSS"];
 const MAX_PAYLOAD_CHARS = 60_000;
 
 function clip(obj: unknown, max: number): string {
@@ -101,7 +101,15 @@ Use extended thinking to reason about the interactions before you write. Then st
 
     const parsed = extractJsonBlock(full);
     if (!parsed || typeof parsed !== "object") {
-      send({ type: "error", message: "Could not parse final JSON block from model output." });
+      console.error("[risk] JSON parse failed", {
+        stopReason: finalMessage.stop_reason,
+        length: full.length,
+        tail: full.slice(-800),
+      });
+      send({
+        type: "error",
+        message: `Could not parse final JSON block from model output (stop_reason=${finalMessage.stop_reason}, length=${full.length}).`,
+      });
       return;
     }
 

@@ -108,24 +108,54 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const limit = Math.min(
-      Math.max(Number(searchParams.get("limit") ?? "20"), 1),
+      Math.max(Number(searchParams.get("limit") ?? "50"), 1),
       100,
     );
+    // archive=active|archived|all. Default: active.
+    const archiveParam = (searchParams.get("archive") ?? "active").toLowerCase();
+    const archiveFilter: "active" | "archived" | "all" =
+      archiveParam === "archived" || archiveParam === "all"
+        ? archiveParam
+        : "active";
 
     const supabase = getSupabase();
-    const { data, error } = await supabase
+
+    // Run the list query and a count of the opposite bucket in parallel so
+    // the UI can show a live "Archive (N)" badge without a second round-trip.
+    const listSelect =
+      "id, created_at, company_name, framework, overall_score, risk_level, file_count, doc_count, archived_at";
+
+    let listQuery = supabase
       .from("audit_runs")
-      .select(
-        "id, created_at, company_name, framework, overall_score, risk_level, file_count, doc_count",
-      )
+      .select(listSelect)
       .order("created_at", { ascending: false })
       .limit(limit);
+    if (archiveFilter === "active") listQuery = listQuery.is("archived_at", null);
+    if (archiveFilter === "archived") listQuery = listQuery.not("archived_at", "is", null);
 
-    if (error) {
-      return Response.json({ error: error.message }, { status: 500 });
+    const [listRes, archivedCountRes, activeCountRes] = await Promise.all([
+      listQuery,
+      supabase
+        .from("audit_runs")
+        .select("id", { count: "exact", head: true })
+        .not("archived_at", "is", null),
+      supabase
+        .from("audit_runs")
+        .select("id", { count: "exact", head: true })
+        .is("archived_at", null),
+    ]);
+
+    if (listRes.error) {
+      return Response.json({ error: listRes.error.message }, { status: 500 });
     }
 
-    return Response.json({ runs: data });
+    return Response.json({
+      runs: listRes.data,
+      counts: {
+        archived: archivedCountRes.count ?? 0,
+        active: activeCountRes.count ?? 0,
+      },
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return Response.json({ error: message }, { status: 500 });

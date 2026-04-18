@@ -26,7 +26,7 @@ export function Hero() {
             className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 font-mono text-[11px] text-muted-foreground"
           >
             <span className="h-1.5 w-1.5 rounded-full bg-foreground/80" />
-            SOC 2 · GDPR · HIPAA · Enterprise AI readiness
+            SOC 2 · GDPR · HIPAA · ISO 27001 · PCI DSS · AI readiness
           </motion.div>
 
           <motion.h1
@@ -80,10 +80,56 @@ export function Hero() {
           </motion.div>
 
           <motion.div
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.35 }}
+            className="mt-8 grid max-w-md gap-3 sm:grid-cols-2"
+          >
+            <Link
+              href="/new?scenario=finovabank"
+              className="group block rounded-lg border border-border bg-surface/60 p-3 transition-colors hover:border-foreground/50 hover:bg-surface-elevated/60"
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  SOC 2 · fintech
+                </span>
+                <span className="font-mono text-[10px] text-muted-foreground group-hover:text-foreground">
+                  →
+                </span>
+              </div>
+              <p className="mt-1 text-sm font-medium">
+                Try the FinovaBank demo
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Plaintext PII, LLM giving investment advice
+              </p>
+            </Link>
+            <Link
+              href="/new?scenario=novogen"
+              className="group block rounded-lg border border-border bg-surface/60 p-3 transition-colors hover:border-foreground/50 hover:bg-surface-elevated/60"
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  HIPAA · biotech
+                </span>
+                <span className="font-mono text-[10px] text-muted-foreground group-hover:text-foreground">
+                  →
+                </span>
+              </div>
+              <p className="mt-1 text-sm font-medium">
+                Try the NovoGen Health demo
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                AI diagnoses with no clinician in the loop
+              </p>
+            </Link>
+          </motion.div>
+
+          <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
-            className="mt-10 flex items-center gap-6 font-mono text-[11px] uppercase tracking-widest text-muted-foreground"
+            transition={{ duration: 0.6, delay: 0.5 }}
+            className="mt-8 flex items-center gap-6 font-mono text-[11px] uppercase tracking-widest text-muted-foreground"
           >
             <span>Code + policy</span>
             <span className="h-3 w-px bg-border" />
