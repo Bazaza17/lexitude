@@ -21,6 +21,7 @@ create table public.audit_runs (
   code_result   jsonb,
   policy_result jsonb,
   risk_result   jsonb,
+  review_result jsonb,
 
   overall_score int,
   risk_level    text check (risk_level in ('low','medium','high','critical'))

@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
-import { getAnthropic, RISK_MODEL } from "@/lib/anthropic";
+import { getAnthropic, REVIEW_MODEL } from "@/lib/anthropic";
 import { createAuditStream, extractJsonBlock } from "@/lib/sse";
-import { riskSynthesisSystemPrompt, type Framework } from "@/lib/audit-prompts";
+import { reviewerSystemPrompt, type Framework } from "@/lib/audit-prompts";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -23,10 +23,11 @@ export async function POST(req: NextRequest) {
     typeof body?.companyName === "string" ? body.companyName : "the company";
   const codeResult = body?.codeResult ?? null;
   const policyResult = body?.policyResult ?? null;
+  const riskResult = body?.riskResult ?? null;
 
-  if (!codeResult && !policyResult) {
+  if (!codeResult && !policyResult && !riskResult) {
     return Response.json(
-      { error: "codeResult and/or policyResult are required" },
+      { error: "At least one of codeResult/policyResult/riskResult is required" },
       { status: 400 },
     );
   }
@@ -35,29 +36,34 @@ export async function POST(req: NextRequest) {
     send({ type: "status", phase: "starting" });
 
     const client = getAnthropic();
-    const system = riskSynthesisSystemPrompt(framework);
+    const system = reviewerSystemPrompt(framework);
 
     const userMsg = `Company: ${companyName}
 Framework: ${framework}
 
-You are synthesizing two prior audits. Cross-reference them and surface what the company does not yet know about its own risk surface.
+Three prior analysts produced the following audit payloads. Independently review them for hallucinations, severity miscalibrations, and missed cross-cutting risk. Be skeptical — do not rubber-stamp.
 
-=== CODE AUDIT RESULT ===
+=== CODE AUDIT ===
 \`\`\`json
 ${clip(codeResult, MAX_PAYLOAD_CHARS)}
 \`\`\`
 
-=== POLICY AUDIT RESULT ===
+=== POLICY AUDIT ===
 \`\`\`json
 ${clip(policyResult, MAX_PAYLOAD_CHARS)}
 \`\`\`
 
-Use extended thinking to reason about the interactions before you write. Then stream a short running commentary and emit the final JSON block.`;
+=== RISK SYNTHESIS ===
+\`\`\`json
+${clip(riskResult, MAX_PAYLOAD_CHARS)}
+\`\`\`
+
+Use extended thinking to calibrate carefully. Stream short commentary as you reason, then emit the final JSON block.`;
 
     let full = "";
 
     const stream = client.messages.stream({
-      model: RISK_MODEL,
+      model: REVIEW_MODEL,
       max_tokens: 16000,
       thinking: { type: "adaptive", display: "summarized" },
       system: [
@@ -70,15 +76,13 @@ Use extended thinking to reason about the interactions before you write. Then st
       messages: [{ role: "user", content: userMsg }],
     });
 
-    send({ type: "status", phase: "thinking" });
+    send({ type: "status", phase: "reviewing" });
 
     stream.on("text", (delta) => {
       full += delta;
       send({ type: "delta", text: delta });
     });
 
-    // Opus 4.7 streams summarized thinking deltas as a separate content-block type.
-    // Forward them so the UI can show a dedicated "reasoning" panel.
     stream.on("streamEvent", (event) => {
       if (
         event.type === "content_block_delta" &&

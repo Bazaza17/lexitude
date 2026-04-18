@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getAnthropic, AUDIT_MODEL } from "@/lib/anthropic";
+import { getAnthropic, POLICY_MODEL } from "@/lib/anthropic";
 import { createAuditStream, extractJsonBlock } from "@/lib/sse";
 import { policyAuditSystemPrompt, type Framework } from "@/lib/audit-prompts";
 
@@ -15,7 +15,8 @@ function renderDocs(docs: PolicyDoc[]): { text: string; truncated: boolean; incl
   let total = 0;
   const parts: string[] = [];
   let included = 0;
-  for (const d of docs) {
+  const sorted = [...docs].sort((a, b) => a.filename.localeCompare(b.filename));
+  for (const d of sorted) {
     const body = (d.chunks ?? []).join("\n\n");
     const header = `\n\n===== POLICY DOC: ${d.filename} =====\n`;
     const chunk = header + body;
@@ -51,21 +52,22 @@ export async function POST(req: NextRequest) {
     const client = getAnthropic();
     const system = policyAuditSystemPrompt(framework);
 
+    const bundleBlock = `Policy document bundle for ${framework} audit.
+Documents included: ${included}${truncated ? " (truncated to fit budget)" : ""}
+${docBundle}`;
+
     const codeFindingsBlock = codeFindings
-      ? `\n\nCode findings from the prior module (for cross-reference):\n\`\`\`json\n${JSON.stringify(codeFindings, null, 2).slice(0, 40_000)}\n\`\`\``
+      ? `\n\nCode findings from a concurrent module (for cross-reference):\n\`\`\`json\n${JSON.stringify(codeFindings, null, 2).slice(0, 40_000)}\n\`\`\``
       : "\n\nNo code findings were provided; focus on internal conflicts and gaps.";
 
-    const userMsg = `Company: ${companyName}
-Framework: ${framework}
-Policy documents included: ${included}${truncated ? " (input was truncated to fit budget)" : ""}
+    const instructionBlock = `Company: ${companyName}
 
-Audit the following policy documents for ${framework} compliance. Stream commentary as you analyze each document, then emit the final JSON block.
-${docBundle}${codeFindingsBlock}`;
+Audit the policy documents above for ${framework} compliance. Stream commentary as you analyze each document, then emit the final JSON block.${codeFindingsBlock}`;
 
     let full = "";
 
     const stream = client.messages.stream({
-      model: AUDIT_MODEL,
+      model: POLICY_MODEL,
       max_tokens: 8000,
       system: [
         {
@@ -74,7 +76,19 @@ ${docBundle}${codeFindingsBlock}`;
           cache_control: { type: "ephemeral" },
         },
       ],
-      messages: [{ role: "user", content: userMsg }],
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: bundleBlock,
+              cache_control: { type: "ephemeral" },
+            },
+            { type: "text", text: instructionBlock },
+          ],
+        },
+      ],
     });
 
     send({ type: "status", phase: "analyzing" });

@@ -1,6 +1,7 @@
 export type AuditStreamEvent =
   | { type: "status"; phase: string }
   | { type: "delta"; text: string }
+  | { type: "thinking"; text: string }
   | { type: "result"; payload: unknown }
   | { type: "error"; message: string };
 
