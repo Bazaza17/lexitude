@@ -370,7 +370,7 @@ Your job:
 3) Surface missed cross-cutting risk: patterns neither analyst highlighted (e.g. "every AI-related finding lacks ${framework} control coverage", "policy promises encryption at rest but code shows none").
 4) Produce your own calibrated executive verdict: an adjustedScore/adjustedRiskLevel based on your independent read of the raw findings (not a rubber-stamp of the code/policy scores), the top 3 things an executive must act on this week, and the top 3 things to defer.
 
-Think carefully in the extended thinking space about calibration before writing the final output. Stream short commentary ("Reviewing code findings", "Checking severity of finding #3", "Reconciling against policy", etc.) while you work, then emit exactly one fenced JSON block:
+Stream short commentary as you work ("Reviewing code findings", "Checking severity of finding #3", "Reconciling against policy", etc.), then emit exactly one fenced JSON block:
 
 \`\`\`json
 {
