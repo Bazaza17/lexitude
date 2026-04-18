@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { consumeNdjsonStream, type AuditStreamEvent } from "@/lib/stream-client";
-import type { Framework } from "@/lib/types";
+import type { Framework, RepoSnapshot, RepoSnapshotFlag } from "@/lib/types";
 import { Logo } from "@/components/site/Logo";
 
 type PendingAudit = {
@@ -42,6 +42,7 @@ export default function RunAuditPage() {
   const [policy, setPolicy] = useState<ModuleState>(emptyModule);
   const [risk, setRisk] = useState<ModuleState>(emptyModule);
   const [review, setReview] = useState<ModuleState>(emptyModule);
+  const [snapshot, setSnapshot] = useState<ModuleState>(emptyModule);
   const [fatalError, setFatalError] = useState<string | null>(null);
   const started = useRef(false);
 
@@ -70,6 +71,7 @@ export default function RunAuditPage() {
       setPolicy,
       setRisk,
       setReview,
+      setSnapshot,
       onSaved: (id) => router.replace(`/run/${id}`),
       onFatal: (msg) => setFatalError(msg),
     });
@@ -125,6 +127,8 @@ export default function RunAuditPage() {
                 {fatalError}
               </div>
             )}
+
+            <SnapshotCard state={snapshot} />
 
             <div className="space-y-4">
               <ModuleCard number="00" title="Ingest" subtitle="Fetch repo + parse policies" state={ingest} />
@@ -296,6 +300,132 @@ function ModuleCard({
   );
 }
 
+function SnapshotCard({ state }: { state: ModuleState }) {
+  const snap = state.result as RepoSnapshot | null;
+  const hasContent = snap || state.commentary || state.status !== "idle";
+
+  if (!hasContent) return null;
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="mb-4 overflow-hidden rounded-xl border border-border bg-surface/40"
+    >
+      <div className="flex items-center justify-between border-b border-border px-5 py-3">
+        <div className="flex items-baseline gap-3">
+          <span className="font-mono text-[11px] uppercase tracking-widest text-muted-foreground">
+            Repo snapshot
+          </span>
+          <span className="text-xs text-muted-foreground">
+            Haiku 4.5 · fast first impression
+          </span>
+        </div>
+        <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${
+              state.status === "done"
+                ? "bg-emerald-400"
+                : state.status === "running"
+                  ? "bg-foreground/80"
+                  : state.status === "error"
+                    ? "bg-destructive"
+                    : "bg-muted-foreground/40"
+            }`}
+            style={
+              state.status === "running"
+                ? { animation: "pulse-dot 1.6s ease-in-out infinite" }
+                : undefined
+            }
+          />
+          {state.status === "done"
+            ? "Done"
+            : state.status === "running"
+              ? "Scanning"
+              : state.status === "error"
+                ? "Error"
+                : "Queued"}
+        </span>
+      </div>
+
+      {snap ? (
+        <div className="space-y-4 px-5 py-4">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                Stack
+              </p>
+              <p className="mt-1 text-sm text-foreground/90">{snap.stack}</p>
+            </div>
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                Surface
+              </p>
+              <p className="mt-1 text-sm text-foreground/90">{snap.surface}</p>
+            </div>
+          </div>
+          <div>
+            <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              First impression
+            </p>
+            <p className="mt-1 text-sm leading-6 text-foreground/80">
+              {snap.firstImpression}
+            </p>
+          </div>
+          {snap.quickFlags && snap.quickFlags.length > 0 && (
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                Quick flags ({snap.quickFlags.length})
+              </p>
+              <ul className="mt-2 space-y-1.5">
+                {snap.quickFlags.map((f: RepoSnapshotFlag, i: number) => (
+                  <li
+                    key={i}
+                    className="flex items-start gap-2 rounded-md border border-border/60 bg-background/40 px-3 py-2 text-xs"
+                  >
+                    <SnapshotSeverityDot level={f.severity} />
+                    <div className="flex-1">
+                      <p className="font-medium text-foreground/90">{f.flag}</p>
+                      <p className="text-muted-foreground">{f.why}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      ) : state.error ? (
+        <div className="px-5 py-3 font-mono text-xs text-destructive">
+          {state.error}
+        </div>
+      ) : (
+        <div className="px-5 py-3 font-mono text-xs text-muted-foreground">
+          <pre className="whitespace-pre-wrap text-foreground/70">
+            {state.commentary || "Sniffing the repo…"}
+          </pre>
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+function SnapshotSeverityDot({ level }: { level: "low" | "medium" | "high" | "critical" }) {
+  const bg = {
+    critical: "bg-destructive",
+    high: "bg-amber-400",
+    medium: "bg-yellow-300",
+    low: "bg-emerald-400",
+  }[level];
+  return (
+    <span
+      aria-hidden="true"
+      className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${bg}`}
+    />
+  );
+}
+
 async function runPipeline(
   p: PendingAudit,
   h: {
@@ -305,6 +435,7 @@ async function runPipeline(
     setPolicy: React.Dispatch<React.SetStateAction<ModuleState>>;
     setRisk: React.Dispatch<React.SetStateAction<ModuleState>>;
     setReview: React.Dispatch<React.SetStateAction<ModuleState>>;
+    setSnapshot: React.Dispatch<React.SetStateAction<ModuleState>>;
     onSaved: (id: string) => void;
     onFatal: (msg: string) => void;
   },
@@ -353,12 +484,25 @@ async function runPipeline(
       error: null,
     });
 
-    // --- Code + Policy in parallel ---
-    // Code and policy don't depend on each other. The reviewer pass will
-    // re-reconcile any cross-issues at the end, so we run them concurrently
-    // to roughly halve wall-clock time for this phase.
+    // --- Snapshot + Code + Policy all in parallel ---
+    // Snapshot is a fast (~3s) Haiku pass on the file tree + package.json +
+    // README only. It lands well before Code/Policy finish and gives the
+    // user something to read while the heavy audit runs.
+    h.setSnapshot({ ...emptyModule, status: "running" });
     h.setCode({ ...emptyModule, status: "running" });
-    h.setOverall("Modules 1 & 2 — code compliance and policy intelligence (parallel)");
+    h.setOverall(
+      "Parallel scan — snapshot · code compliance · policy intelligence",
+    );
+
+    // Don't block on snapshot — we don't need its result for downstream
+    // modules. Let it land whenever it lands and update the UI in place.
+    void streamAudit(h.setSnapshot, "/api/audit/snapshot", {
+      companyName: p.companyName,
+      framework: p.framework,
+      files,
+    }).catch(() => {
+      // Non-fatal. Snapshot is a UX nicety; its failure shouldn't kill the run.
+    });
 
     const codePromise = streamAudit(h.setCode, "/api/audit/code", {
       companyName: p.companyName,

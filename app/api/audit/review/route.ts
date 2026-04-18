@@ -64,8 +64,9 @@ Use extended thinking to calibrate carefully. Stream short commentary as you rea
 
     const stream = client.messages.stream({
       model: REVIEW_MODEL,
-      max_tokens: 16000,
+      max_tokens: 8000,
       thinking: { type: "adaptive", display: "summarized" },
+      output_config: { effort: "medium" },
       system: [
         {
           type: "text",
