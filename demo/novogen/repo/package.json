@@ -1,0 +1,17 @@
+{
+  "name": "novogen-health",
+  "version": "1.4.2",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.90.0",
+    "next": "16.2.4",
+    "pg": "8.6.0",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  }
+}

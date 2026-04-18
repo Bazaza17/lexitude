@@ -2,9 +2,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useId, useRef, useState } from "react";
-import type { Framework } from "@/lib/types";
+import { useEffect, useId, useRef, useState } from "react";
+import { frameworkDisplayName, type Framework } from "@/lib/types";
 import { Logo } from "@/components/site/Logo";
+import { getScenario } from "@/lib/demo-scenarios";
+
+function readScenarioIdFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  const sp = new URLSearchParams(window.location.search);
+  return sp.get("scenario");
+}
 
 type PendingAudit = {
   companyName: string;
@@ -41,30 +48,84 @@ const FRAMEWORKS: {
     description: "EU data-protection and privacy obligations.",
     popular: true,
   },
+  {
+    value: "ISO27001",
+    name: "ISO 27001",
+    description: "ISO/IEC 27001:2022 ISMS — Annex A controls.",
+    popular: false,
+  },
+  {
+    value: "PCIDSS",
+    name: "PCI DSS",
+    description: "PCI DSS v4.0 — for anyone touching cardholder data.",
+    popular: false,
+  },
 ];
 
 export default function NewAuditPage() {
   const router = useRouter();
+  // Read the scenario id from the URL at module time (client-only). Avoids the
+  // useSearchParams Suspense requirement — this page is already "use client"
+  // and never SSR-hydrated with a scenario prefill.
+  const initialScenarioId =
+    typeof window !== "undefined" ? readScenarioIdFromUrl() : null;
+  const initial = initialScenarioId ? getScenario(initialScenarioId) : undefined;
+
   const [step, setStep] = useState<Step>(0);
 
-  const [companyName, setCompanyName] = useState("FinovaBank");
-  const [framework, setFramework] = useState<Framework>("SOC2");
+  const [companyName, setCompanyName] = useState(
+    initial?.companyName ?? "FinovaBank",
+  );
+  const [framework, setFramework] = useState<Framework>(
+    initial?.framework ?? "SOC2",
+  );
 
-  const [repoUrl, setRepoUrl] = useState("https://github.com/Bazaza17/lexitude");
-  const [repoPaths, setRepoPaths] = useState("demo/finovabank/repo");
+  const [repoUrl, setRepoUrl] = useState(
+    initial?.repoUrl ?? "https://github.com/Bazaza17/lexitude",
+  );
+  const [repoPaths, setRepoPaths] = useState(
+    initial?.repoPaths ?? "demo/finovabank/repo",
+  );
 
-  const [policyText, setPolicyText] = useState("");
+  const [policyText, setPolicyText] = useState(initial?.policyText ?? "");
   const [policyFiles, setPolicyFiles] = useState<File[]>([]);
+  // Auto-discovered policy docs pulled straight from the repo tree. Kept
+  // separate from user uploads so the UI can show them differently and so a
+  // re-run of discovery replaces the set cleanly.
+  const [discoveredDocs, setDiscoveredDocs] = useState<
+    Array<{ path: string; name: string; text: string }>
+  >([]);
 
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Re-seed if the URL scenario param changed after mount (e.g. user clicks
+  // another scenario link while still on /new). initialScenarioId isn't
+  // available during SSR, so this effect handles the client-side hydration
+  // case and subsequent pushes.
+  const appliedScenario = useRef<string | null>(initial?.id ?? null);
+  useEffect(() => {
+    const id = readScenarioIdFromUrl();
+    if (!id) return;
+    if (appliedScenario.current === id) return;
+    const s = getScenario(id);
+    if (!s) return;
+    appliedScenario.current = id;
+    /* eslint-disable react-hooks/set-state-in-effect -- one-shot scenario prefill, guarded by ref so no re-fire */
+    setCompanyName(s.companyName);
+    setFramework(s.framework);
+    setRepoUrl(s.repoUrl);
+    setRepoPaths(s.repoPaths);
+    setPolicyText(s.policyText);
+    setStep(0);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
+
   const stepValidation = (() => {
     if (step === 0 && !companyName.trim()) return "Company name is required.";
     if (step === 1 && !repoUrl.trim()) return "GitHub repo URL is required.";
-    if (step === 2 && !policyText.trim() && policyFiles.length === 0)
-      return "Provide at least one policy document (upload or paste).";
+    // Step 2 (policies) is optional — empty triggers the no-docs inference mode.
     return null;
   })();
 
@@ -85,17 +146,21 @@ export default function NewAuditPage() {
     if (submitting) return;
     setErr(null);
 
-    // final validation
+    // final validation — policies are optional; empty triggers no-docs inference
     if (!companyName.trim()) return setErr("Company name is required.");
     if (!repoUrl.trim()) return setErr("GitHub repo URL is required.");
-    if (!policyText.trim() && policyFiles.length === 0)
-      return setErr("Provide at least one policy document.");
 
     setSubmitting(true);
     try {
       const files = await Promise.all(
         policyFiles.map(async (f) => ({ name: f.name, text: await f.text() })),
       );
+      // Merge auto-discovered repo docs into the same bundle — the downstream
+      // pipeline doesn't care where a doc came from, only that it parses.
+      const mergedFiles = [
+        ...files,
+        ...discoveredDocs.map((d) => ({ name: d.path, text: d.text })),
+      ];
       const pending: PendingAudit = {
         companyName: companyName.trim(),
         framework,
@@ -105,7 +170,7 @@ export default function NewAuditPage() {
           .map((s) => s.trim())
           .filter(Boolean),
         policyText: policyText.trim(),
-        policyFiles: files,
+        policyFiles: mergedFiles,
       };
       sessionStorage.setItem("lexitude:pending", JSON.stringify(pending));
       router.push("/run");
@@ -140,26 +205,39 @@ export default function NewAuditPage() {
       </header>
 
       <div className="relative mx-auto max-w-4xl px-6 py-10">
-        {/* Progress */}
+        {/* Progress — dots are clickable to jump between visited steps */}
         <div className="mb-10 flex items-center gap-2">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="flex flex-1 items-center gap-2">
-              <div
-                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border font-mono text-[10px] ${
-                  i <= step
-                    ? "border-foreground bg-foreground text-background"
-                    : "border-border bg-surface text-muted-foreground"
-                }`}
-              >
-                {i < step ? "✓" : i + 1}
+          {[0, 1, 2, 3].map((i) => {
+            const reachable = i <= step;
+            return (
+              <div key={i} className="flex flex-1 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (reachable) {
+                      setErr(null);
+                      setStep(i as Step);
+                    }
+                  }}
+                  disabled={!reachable}
+                  aria-label={`Go to step ${i + 1}`}
+                  aria-current={i === step ? "step" : undefined}
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border font-mono text-[10px] transition-all disabled:pointer-events-none ${
+                    i <= step
+                      ? "border-foreground bg-foreground text-background hover:scale-110"
+                      : "border-border bg-surface text-muted-foreground opacity-60"
+                  }`}
+                >
+                  {i < step ? "✓" : i + 1}
+                </button>
+                {i < 3 && (
+                  <div
+                    className={`h-px flex-1 ${i < step ? "bg-foreground" : "bg-border"}`}
+                  />
+                )}
               </div>
-              {i < 3 && (
-                <div
-                  className={`h-px flex-1 ${i < step ? "bg-foreground" : "bg-border"}`}
-                />
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="rounded-xl border border-border bg-surface/40 p-8">
@@ -185,6 +263,9 @@ export default function NewAuditPage() {
               setPolicyText={setPolicyText}
               policyFiles={policyFiles}
               setPolicyFiles={setPolicyFiles}
+              discoveredDocs={discoveredDocs}
+              setDiscoveredDocs={setDiscoveredDocs}
+              repoUrl={repoUrl}
               fileInputRef={fileInputRef}
             />
           )}
@@ -195,6 +276,7 @@ export default function NewAuditPage() {
               repoUrl={repoUrl}
               repoPaths={repoPaths}
               policyFiles={policyFiles}
+              discoveredDocs={discoveredDocs}
               policyText={policyText}
             />
           )}
@@ -209,6 +291,7 @@ export default function NewAuditPage() {
         {/* Footer nav */}
         <div className="mt-6 flex items-center justify-between gap-4">
           <button
+            type="button"
             onClick={back}
             disabled={step === 0}
             className="inline-flex min-h-11 cursor-pointer items-center rounded-md px-4 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
@@ -218,6 +301,7 @@ export default function NewAuditPage() {
 
           {step < 3 ? (
             <button
+              type="button"
               onClick={next}
               className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
             >
@@ -234,6 +318,7 @@ export default function NewAuditPage() {
             </button>
           ) : (
             <button
+              type="button"
               onClick={handleStart}
               disabled={submitting}
               aria-busy={submitting}
@@ -477,16 +562,68 @@ function StepPolicy({
   setPolicyText,
   policyFiles,
   setPolicyFiles,
+  discoveredDocs,
+  setDiscoveredDocs,
+  repoUrl,
   fileInputRef,
 }: {
   policyText: string;
   setPolicyText: (s: string) => void;
   policyFiles: File[];
   setPolicyFiles: (f: File[]) => void;
+  discoveredDocs: Array<{ path: string; name: string; text: string }>;
+  setDiscoveredDocs: (
+    d: Array<{ path: string; name: string; text: string }>,
+  ) => void;
+  repoUrl: string;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
 }) {
   const uploadId = useId();
   const textId = useId();
+  const [discovering, setDiscovering] = useState(false);
+  const [discoverErr, setDiscoverErr] = useState<string | null>(null);
+  const [discoverStatus, setDiscoverStatus] = useState<string | null>(null);
+
+  async function runAutoDiscover() {
+    if (discovering) return;
+    setDiscoverErr(null);
+    setDiscoverStatus(null);
+    if (!repoUrl.trim()) {
+      setDiscoverErr("Set a GitHub repo URL in step 2 first.");
+      return;
+    }
+    setDiscovering(true);
+    try {
+      const res = await fetch("/api/policies/discover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repoUrl: repoUrl.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? "Discovery failed");
+      const docs = Array.isArray(json.docs) ? json.docs : [];
+      setDiscoveredDocs(
+        docs.map((d: { path: string; name: string; text: string }) => ({
+          path: d.path,
+          name: d.name,
+          text: d.text,
+        })),
+      );
+      setDiscoverStatus(
+        docs.length === 0
+          ? "No policy-like documents found in the repo. You can still upload, paste, or continue without docs."
+          : `Found ${docs.length} policy document${docs.length === 1 ? "" : "s"} in the repo.`,
+      );
+    } catch (e) {
+      setDiscoverErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDiscovering(false);
+    }
+  }
+
+  const hasAnyDoc =
+    policyFiles.length > 0 || discoveredDocs.length > 0 || !!policyText.trim();
+
   return (
     <div>
       <StepHeader
@@ -495,7 +632,118 @@ function StepPolicy({
         subtitle="Drop in PDFs, markdown, or paste raw text. Lexitude will cross-reference every clause with your code."
       />
 
+      {/* No-policies hero — first-class path for companies that don't have
+          written policies yet. Tells the user skipping is supported and
+          explains what happens. */}
+      {!hasAnyDoc && (
+        <div className="mb-6 rounded-lg border border-dashed border-border bg-background p-4">
+          <div className="mb-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            <span className="h-1.5 w-1.5 rounded-full bg-foreground/70" />
+            No policies yet?
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Continue without uploading. Lexitude will generate the full
+            required-policy gap list from your code findings and framework
+            requirements — and draft any missing policy inline once the audit
+            finishes.
+          </p>
+        </div>
+      )}
+
       <div className="space-y-6">
+        {/* Auto-discover + connectors */}
+        <div className="rounded-lg border border-border bg-surface/40 p-4">
+          <div className="mb-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            Pull from a source
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={runAutoDiscover}
+              disabled={discovering || !repoUrl.trim()}
+              className="inline-flex min-h-9 items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-surface-elevated disabled:pointer-events-none disabled:opacity-50"
+            >
+              {discovering ? (
+                <>
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    aria-hidden="true"
+                    className="animate-spin"
+                  >
+                    <circle
+                      cx="12"
+                      cy="12"
+                      r="9"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeDasharray="40 20"
+                    />
+                  </svg>
+                  Scanning repo…
+                </>
+              ) : (
+                <>
+                  <span aria-hidden="true">⎇</span>
+                  Auto-discover from repo
+                </>
+              )}
+            </button>
+            <ConnectorStub label="Notion" />
+            <ConnectorStub label="Google Drive" />
+            <ConnectorStub label="Confluence" />
+            <ConnectorStub label="SharePoint" />
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Auto-discover scans your repo for <code className="font-mono">SECURITY.md</code>,{" "}
+            <code className="font-mono">PRIVACY.md</code>,{" "}
+            <code className="font-mono">docs/compliance/</code>, and other
+            conventional policy locations. Connectors coming soon.
+          </p>
+
+          {discoverStatus && (
+            <div className="mt-3 rounded-md border border-border bg-background px-3 py-2 text-xs text-muted-foreground">
+              {discoverStatus}
+            </div>
+          )}
+          {discoverErr && (
+            <div className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              {discoverErr}
+            </div>
+          )}
+
+          {discoveredDocs.length > 0 && (
+            <div className="mt-3 space-y-1 rounded-md border border-border bg-background px-3 py-2 font-mono text-xs text-muted-foreground">
+              {discoveredDocs.map((d) => (
+                <div
+                  key={d.path}
+                  className="flex items-center justify-between gap-2"
+                >
+                  <span>
+                    <span className="text-foreground">{d.path}</span> ·{" "}
+                    {(d.text.length / 1024).toFixed(1)}KB
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDiscoveredDocs(
+                        discoveredDocs.filter((x) => x.path !== d.path),
+                      )
+                    }
+                    aria-label={`Remove ${d.path}`}
+                    className="cursor-pointer text-muted-foreground hover:text-destructive"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div>
           <label
             htmlFor={uploadId}
@@ -548,12 +796,30 @@ function StepPolicy({
   );
 }
 
+function ConnectorStub({ label }: { label: string }) {
+  return (
+    <button
+      type="button"
+      disabled
+      title={`${label} connector coming soon`}
+      className="inline-flex min-h-9 cursor-not-allowed items-center gap-1.5 rounded-md border border-dashed border-border bg-background/60 px-3 py-1.5 text-xs text-muted-foreground opacity-70"
+    >
+      <span aria-hidden="true">◦</span>
+      {label}
+      <span className="ml-1 rounded-sm border border-border px-1 py-[1px] font-mono text-[9px] uppercase tracking-wider">
+        soon
+      </span>
+    </button>
+  );
+}
+
 function StepReview({
   companyName,
   framework,
   repoUrl,
   repoPaths,
   policyFiles,
+  discoveredDocs,
   policyText,
 }: {
   companyName: string;
@@ -561,25 +827,34 @@ function StepReview({
   repoUrl: string;
   repoPaths: string;
   policyFiles: File[];
+  discoveredDocs: Array<{ path: string; name: string; text: string }>;
   policyText: string;
 }) {
   const paths = repoPaths
     .split(/[,\n]/)
     .map((s) => s.trim())
     .filter(Boolean);
-  const docCount = policyFiles.length + (policyText.trim() ? 1 : 0);
+  const docCount =
+    policyFiles.length +
+    discoveredDocs.length +
+    (policyText.trim() ? 1 : 0);
+  const noDocs = docCount === 0;
 
   return (
     <div>
       <StepHeader
         tag="Step 4"
         title="Ready to run"
-        subtitle="Three Claude modules will run in sequence — code, policy, and risk — streaming live."
+        subtitle={
+          noDocs
+            ? "Three Claude modules will run — code, policy inference (no docs provided), and risk — streaming live."
+            : "Three Claude modules will run — code, policy, and risk — streaming live."
+        }
       />
 
       <div className="space-y-3">
         <ReviewRow label="Company" value={companyName || "—"} />
-        <ReviewRow label="Framework" value={framework} mono />
+        <ReviewRow label="Framework" value={frameworkDisplayName(framework)} mono />
         <ReviewRow label="Repository" value={repoUrl} mono />
         <ReviewRow
           label="Paths"
@@ -589,11 +864,13 @@ function StepReview({
         <ReviewRow
           label="Policy sources"
           value={
-            docCount === 0
-              ? "None"
+            noDocs
+              ? "None — will infer required policies from code + framework"
               : [
                   policyFiles.length > 0 &&
-                    `${policyFiles.length} file${policyFiles.length > 1 ? "s" : ""}`,
+                    `${policyFiles.length} upload${policyFiles.length > 1 ? "s" : ""}`,
+                  discoveredDocs.length > 0 &&
+                    `${discoveredDocs.length} from repo`,
                   policyText.trim() && "pasted text",
                 ]
                   .filter(Boolean)
@@ -608,10 +885,15 @@ function StepReview({
           What happens next
         </div>
         <ul className="space-y-1.5 text-sm text-muted-foreground">
-          <li>1. We fetch the repo and parse the policy documents.</li>
           <li>
-            2. Module 1 scores your code against {framework}. Module 2 reads
-            policies and flags gaps. Module 3 cross-references code vs policy.
+            1. We fetch the repo{noDocs ? "" : " and parse the policy documents"}.
+          </li>
+          <li>
+            2. Module 1 scores your code against {frameworkDisplayName(framework)}.{" "}
+            {noDocs
+              ? "Module 2 infers the full required-policy set from your code and framework. "
+              : "Module 2 reads policies and flags gaps. "}
+            Module 3 cross-references code vs policy.
           </li>
           <li>
             3. The run is saved. You get a dashboard with findings, insights,

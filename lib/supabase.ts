@@ -17,7 +17,7 @@ export function getSupabase(): SupabaseClient {
   return cached;
 }
 
-export type Framework = "SOC2" | "GDPR" | "HIPAA";
+export type Framework = "SOC2" | "GDPR" | "HIPAA" | "ISO27001" | "PCIDSS";
 export type RiskLevel = "low" | "medium" | "high" | "critical";
 
 export type AuditRunRow = {
@@ -32,6 +32,8 @@ export type AuditRunRow = {
   code_result: unknown;
   policy_result: unknown;
   risk_result: unknown;
+  review_result: unknown;
   overall_score: number | null;
   risk_level: RiskLevel | null;
+  archived_at: string | null;
 };

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getAnthropic, AUDIT_MODEL } from "@/lib/anthropic";
+import { getAnthropic, CODE_MODEL } from "@/lib/anthropic";
 import { createAuditStream, extractJsonBlock } from "@/lib/sse";
 import { codeAuditSystemPrompt, type Framework } from "@/lib/audit-prompts";
 
@@ -8,14 +8,16 @@ export const maxDuration = 120;
 
 type RepoFile = { path: string; content: string; language?: string };
 
-const FRAMEWORKS: Framework[] = ["SOC2", "GDPR", "HIPAA"];
+const FRAMEWORKS: Framework[] = ["SOC2", "GDPR", "HIPAA", "ISO27001", "PCIDSS"];
 const MAX_TOTAL_CHARS = 250_000;
 
 function renderFiles(files: RepoFile[]): { text: string; truncated: boolean; included: number } {
   let total = 0;
   const parts: string[] = [];
   let included = 0;
-  for (const f of files) {
+  // Sort files by path for deterministic cache key across runs on the same repo.
+  const sorted = [...files].sort((a, b) => a.path.localeCompare(b.path));
+  for (const f of sorted) {
     const header = `\n\n===== FILE: ${f.path} (${f.language ?? "text"}) =====\n`;
     const body = f.content ?? "";
     const chunk = header + body;
@@ -49,17 +51,21 @@ export async function POST(req: NextRequest) {
     const client = getAnthropic();
     const system = codeAuditSystemPrompt(framework);
 
-    const userMsg = `Company: ${companyName}
-Framework: ${framework}
-Files included in this audit: ${included}${truncated ? " (input was truncated to fit budget)" : ""}
-
-Audit the following code bundle for ${framework} compliance exposure. Stream commentary as you analyze each file, then emit the final JSON block.
+    // Two-part user message: the deterministic code bundle (cached) comes FIRST,
+    // then the per-run instructions (not cached) come SECOND. That keeps the
+    // expensive bundle prefix stable across reruns on the same repo.
+    const bundleBlock = `Repository bundle for ${framework} compliance audit.
+Files included: ${included}${truncated ? " (truncated to fit budget)" : ""}
 ${codeBundle}`;
+
+    const instructionBlock = `Company: ${companyName}
+
+Audit the code bundle above for ${framework} compliance exposure. Stream commentary as you analyze each file, then emit the final JSON block per the schema in the system prompt.`;
 
     let full = "";
 
     const stream = client.messages.stream({
-      model: AUDIT_MODEL,
+      model: CODE_MODEL,
       max_tokens: 8000,
       system: [
         {
@@ -68,7 +74,21 @@ ${codeBundle}`;
           cache_control: { type: "ephemeral" },
         },
       ],
-      messages: [{ role: "user", content: userMsg }],
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: bundleBlock,
+              // Second breakpoint — caches the large, deterministic file bundle
+              // so re-runs on the same repo hit the cache.
+              cache_control: { type: "ephemeral" },
+            },
+            { type: "text", text: instructionBlock },
+          ],
+        },
+      ],
     });
 
     send({ type: "status", phase: "analyzing" });
@@ -86,7 +106,15 @@ ${codeBundle}`;
 
     const parsed = extractJsonBlock(full);
     if (!parsed || typeof parsed !== "object") {
-      send({ type: "error", message: "Could not parse final JSON block from model output." });
+      console.error("[code] JSON parse failed", {
+        stopReason: finalMessage.stop_reason,
+        length: full.length,
+        tail: full.slice(-800),
+      });
+      send({
+        type: "error",
+        message: `Could not parse final JSON block from model output (stop_reason=${finalMessage.stop_reason}, length=${full.length}).`,
+      });
       return;
     }
 

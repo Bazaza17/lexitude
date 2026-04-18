@@ -1,17 +1,43 @@
 import { NextRequest } from "next/server";
-import { getAnthropic, RISK_MODEL } from "@/lib/anthropic";
+import { getAnthropic, REVIEW_MODEL } from "@/lib/anthropic";
 import { createAuditStream, extractJsonBlock } from "@/lib/sse";
-import { riskSynthesisSystemPrompt, type Framework } from "@/lib/audit-prompts";
+import { reviewerSystemPrompt, type Framework } from "@/lib/audit-prompts";
+import type { CodeResult, PolicyResult } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
 
 const FRAMEWORKS: Framework[] = ["SOC2", "GDPR", "HIPAA", "ISO27001", "PCIDSS"];
-const MAX_PAYLOAD_CHARS = 60_000;
+const MAX_PAYLOAD_CHARS = 40_000;
 
 function clip(obj: unknown, max: number): string {
   const s = JSON.stringify(obj ?? null, null, 2);
   return s.length > max ? s.slice(0, max) + "\n/* ...truncated for length */" : s;
+}
+
+// Review only needs the raw findings + the scores to anchor its calibration.
+// Strip the summary/stats prose — Sonnet spends noticeable time chewing on it
+// and it isn't load-bearing for a calibration pass.
+function trimCodeForReview(r: unknown): object | null {
+  if (!r || typeof r !== "object") return null;
+  const c = r as Partial<CodeResult>;
+  return {
+    score: c.score,
+    riskLevel: c.riskLevel,
+    findings: c.findings ?? [],
+  };
+}
+
+function trimPolicyForReview(r: unknown): object | null {
+  if (!r || typeof r !== "object") return null;
+  const p = r as Partial<PolicyResult>;
+  return {
+    score: p.score,
+    riskLevel: p.riskLevel,
+    conflicts: p.conflicts ?? [],
+    gaps: p.gaps ?? [],
+    codeVsPolicyConflicts: p.codeVsPolicyConflicts ?? [],
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -26,7 +52,7 @@ export async function POST(req: NextRequest) {
 
   if (!codeResult && !policyResult) {
     return Response.json(
-      { error: "codeResult and/or policyResult are required" },
+      { error: "At least one of codeResult/policyResult is required" },
       { status: 400 },
     );
   }
@@ -35,32 +61,34 @@ export async function POST(req: NextRequest) {
     send({ type: "status", phase: "starting" });
 
     const client = getAnthropic();
-    const system = riskSynthesisSystemPrompt(framework);
+    const system = reviewerSystemPrompt(framework);
 
     const userMsg = `Company: ${companyName}
 Framework: ${framework}
 
-You are synthesizing two prior audits. Cross-reference them and surface what the company does not yet know about its own risk surface.
+Two prior analysts produced the following audit payloads (findings + scores only; summaries and stats omitted — re-derive your verdict from the raw findings). Independently review them for hallucinations, severity miscalibrations, and missed cross-cutting risk. Be skeptical — do not rubber-stamp.
 
-=== CODE AUDIT RESULT ===
+=== CODE AUDIT ===
 \`\`\`json
-${clip(codeResult, MAX_PAYLOAD_CHARS)}
+${clip(trimCodeForReview(codeResult), MAX_PAYLOAD_CHARS)}
 \`\`\`
 
-=== POLICY AUDIT RESULT ===
+=== POLICY AUDIT ===
 \`\`\`json
-${clip(policyResult, MAX_PAYLOAD_CHARS)}
+${clip(trimPolicyForReview(policyResult), MAX_PAYLOAD_CHARS)}
 \`\`\`
 
-Use extended thinking to reason about the interactions before you write. Then stream a short running commentary and emit the final JSON block.`;
+A separate risk synthesis is running in parallel — do not critique it here. Focus on calibrating the raw code and policy findings.
+
+Stream short commentary as you reason, then emit the final JSON block.`;
 
     let full = "";
 
     const stream = client.messages.stream({
-      model: RISK_MODEL,
-      max_tokens: 6000,
+      model: REVIEW_MODEL,
+      max_tokens: 3500,
       thinking: { type: "adaptive", display: "summarized" },
-      output_config: { effort: "medium" },
+      output_config: { effort: "low" },
       system: [
         {
           type: "text",
@@ -71,15 +99,13 @@ Use extended thinking to reason about the interactions before you write. Then st
       messages: [{ role: "user", content: userMsg }],
     });
 
-    send({ type: "status", phase: "thinking" });
+    send({ type: "status", phase: "reviewing" });
 
     stream.on("text", (delta) => {
       full += delta;
       send({ type: "delta", text: delta });
     });
 
-    // Opus 4.7 streams summarized thinking deltas as a separate content-block type.
-    // Forward them so the UI can show a dedicated "reasoning" panel.
     stream.on("streamEvent", (event) => {
       if (
         event.type === "content_block_delta" &&
@@ -101,7 +127,7 @@ Use extended thinking to reason about the interactions before you write. Then st
 
     const parsed = extractJsonBlock(full);
     if (!parsed || typeof parsed !== "object") {
-      console.error("[risk] JSON parse failed", {
+      console.error("[review] JSON parse failed", {
         stopReason: finalMessage.stop_reason,
         length: full.length,
         tail: full.slice(-800),
