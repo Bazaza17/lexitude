@@ -32,6 +32,7 @@ export type AuditRunRow = {
   code_result: unknown;
   policy_result: unknown;
   risk_result: unknown;
+  review_result: unknown;
   overall_score: number | null;
   risk_level: RiskLevel | null;
 };

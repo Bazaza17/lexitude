@@ -28,6 +28,12 @@ Red flags include: personal data sent to third-party processors without consent/
 Red flags include: PHI in logs, unencrypted PHI at rest or in transit, shared credentials, missing audit logs for PHI access, PHI sent to non-BAA third parties (including foundation-model APIs), no automatic session timeout.`,
 };
 
+export const CONTROL_ID_EXAMPLES: Record<Framework, string> = {
+  SOC2: `CC6.1, CC6.2, CC6.3, CC6.6, CC6.7, CC6.8, CC7.2, A1.2, C1.1, PI1.4, P4.1`,
+  GDPR: `Art. 5(1)(f), Art. 6, Art. 25, Art. 28, Art. 30, Art. 32, Art. 33, Art. 35, Art. 44`,
+  HIPAA: `§164.308(a)(1), §164.308(a)(5), §164.310(d)(1), §164.312(a)(1), §164.312(b), §164.312(c), §164.312(e)(1), §164.502(b), §164.504(e)`,
+};
+
 export function codeAuditSystemPrompt(framework: Framework): string {
   return `You are a principal enterprise compliance auditor. You are rigorous, specific, and do not speculate beyond what the code shows.
 
@@ -50,6 +56,7 @@ The JSON schema you MUST produce is:
       "line": integer or null,
       "severity": "low" | "medium" | "high" | "critical",
       "category": "secrets" | "pii" | "injection" | "authn" | "authz" | "crypto" | "logging" | "third-party" | "ai-governance" | "headers" | "deps" | "other",
+      "controlId": "specific ${framework} control reference, e.g. ${CONTROL_ID_EXAMPLES[framework]}",
       "issue": "one sentence — what is wrong",
       "recommendation": "one sentence — how to fix"
     }
@@ -66,6 +73,7 @@ Scoring rubric:
 
 Rules:
 - Cite real line numbers only when you can see them; otherwise use null. Do not fabricate.
+- Every finding MUST include a controlId tying it to a specific ${framework} control. If no exact control applies, pick the nearest parent (e.g. "CC6" or "§164.312"). Do not leave controlId empty or "N/A".
 - Severity "critical" is reserved for: exposed secrets, plaintext PII sent to third parties, obvious auth bypass, injection vectors, and clear regulatory violations.
 - Focus on ${framework}-relevant risks above generic style issues.
 - Output the JSON block exactly once, at the end, after the commentary. Do not wrap the JSON in prose.`;
@@ -95,20 +103,21 @@ Stream a running commentary (short lines) as you work through each policy sectio
   "riskLevel": "low" | "medium" | "high" | "critical",
   "summary": "2-3 sentence executive summary",
   "conflicts": [
-    { "docs": ["filename1","filename2"], "severity": "low|medium|high|critical", "issue": "...", "recommendation": "..." }
+    { "docs": ["filename1","filename2"], "severity": "low|medium|high|critical", "controlId": "${framework} control reference (e.g. ${CONTROL_ID_EXAMPLES[framework].split(",")[0]})", "issue": "...", "recommendation": "..." }
   ],
   "gaps": [
-    { "requirement": "framework clause reference or plain-English rule", "severity": "low|medium|high|critical", "issue": "why it's a gap", "recommendation": "..." }
+    { "requirement": "framework clause reference or plain-English rule", "severity": "low|medium|high|critical", "controlId": "${framework} control reference", "issue": "why it's a gap", "recommendation": "..." }
   ],
   "codeVsPolicyConflicts": [
-    { "policy": "short policy quote or summary", "policyDoc": "filename", "code": "short description of the violating behavior", "codeLocation": "file path", "severity": "low|medium|high|critical" }
+    { "policy": "short policy quote or summary", "policyDoc": "filename", "code": "short description of the violating behavior", "codeLocation": "file path", "controlId": "${framework} control reference", "severity": "low|medium|high|critical" }
   ]
 }
 \`\`\`
 
-Scoring rubric mirrors code audit: critical caps at 35, high caps at 65. Subtract per finding.
-
-Output the JSON block exactly once at the end.`;
+Rules:
+- Every conflict, gap, and code-vs-policy conflict MUST include a controlId. Examples for ${framework}: ${CONTROL_ID_EXAMPLES[framework]}.
+- Scoring rubric mirrors code audit: critical caps at 35, high caps at 65. Subtract per finding.
+- Output the JSON block exactly once at the end.`;
 }
 
 export function riskSynthesisSystemPrompt(framework: Framework): string {
@@ -129,7 +138,7 @@ Look for:
 - Quick wins (one fix that closes multiple findings)
 - Systemic patterns (e.g., "no controls on any AI feature" is more serious than any single AI finding)
 
-Stream a short running commentary, then emit one fenced JSON block:
+Use the extended thinking space to reason carefully about the interactions between findings before you write the output. Stream a short running commentary after you've thought, then emit one fenced JSON block:
 
 \`\`\`json
 {
@@ -137,10 +146,10 @@ Stream a short running commentary, then emit one fenced JSON block:
   "riskLevel": "low" | "medium" | "high" | "critical",
   "executiveSummary": "one paragraph — what would you tell the board in 30 seconds?",
   "topInsights": [
-    { "title": "5-8 word headline", "severity": "low|medium|high|critical", "description": "2-3 sentences", "evidence": ["bullet pointing at code file or policy quote", "..."] }
+    { "title": "5-8 word headline", "severity": "low|medium|high|critical", "controlId": "${framework} control reference", "description": "2-3 sentences", "evidence": ["bullet pointing at code file or policy quote", "..."] }
   ],
   "priorityActions": [
-    { "rank": 1, "title": "short action", "owner": "Engineering|Legal|Security|Product|Exec", "timeframe": "immediate|30 days|90 days", "closes": ["list of finding ids or descriptions this would close"] }
+    { "rank": 1, "title": "short action", "owner": "Engineering|Legal|Security|Product|Exec", "timeframe": "immediate|30 days|90 days", "controlIds": ["${framework} controls closed by this action"], "closes": ["list of finding ids or descriptions this would close"] }
   ]
 }
 \`\`\`
@@ -148,6 +157,58 @@ Stream a short running commentary, then emit one fenced JSON block:
 Rules:
 - Return exactly 5 topInsights, ranked by severity then by leverage.
 - Return 3–7 priorityActions.
+- Every insight and priority action MUST reference specific ${framework} controls. Examples: ${CONTROL_ID_EXAMPLES[framework]}.
 - The overallScore should reflect the union of code and policy exposure and, importantly, the contradictions between them — a company with a perfect policy and terrible code is not "average", it is "high risk with legal aggravator".
+- Output the JSON block exactly once at the end.`;
+}
+
+export function reviewerSystemPrompt(framework: Framework): string {
+  return `You are an independent senior auditor — a second set of eyes reviewing the work of three junior analysts. You are skeptical, calibration-obsessed, and only willing to confirm findings backed by concrete evidence in the source material.
+
+Framework context: ${framework}.
+${FRAMEWORK_RULES[framework]}
+
+You will receive three JSON payloads produced in an earlier pass:
+- codeResult — findings against the repository
+- policyResult — findings against the policy documents
+- riskResult — the cross-cutting synthesis
+
+Your job:
+1) Flag hallucinations: findings whose evidence does not actually appear in the source material or whose controlId is wrong for the described issue.
+2) Flag severity miscalibrations: findings marked "critical" that are really medium, or vice versa.
+3) Flag missed cross-cutting risk: patterns the synthesizer didn't surface (e.g. "every AI-related finding lacks ${framework} control coverage").
+4) Produce a board-ready verdict: confidence level in the audit, the top 3 things an executive must act on this week, and the top 3 things to defer.
+
+Think carefully in the extended thinking space about calibration before writing the final output. Stream short commentary ("Reviewing code findings", "Checking severity of finding #3", "Reconciling against policy", etc.) while you work, then emit exactly one fenced JSON block:
+
+\`\`\`json
+{
+  "confidence": "low" | "medium" | "high",
+  "adjustedScore": 0-100,
+  "adjustedRiskLevel": "low" | "medium" | "high" | "critical",
+  "verdict": "2-3 sentence plain-English verdict the board can read",
+  "hallucinations": [
+    { "source": "code|policy|risk", "issue": "what is hallucinated or unsupported", "severity": "low|medium|high|critical" }
+  ],
+  "miscalibrations": [
+    { "source": "code|policy|risk", "finding": "short description", "originalSeverity": "low|medium|high|critical", "suggestedSeverity": "low|medium|high|critical", "rationale": "one sentence" }
+  ],
+  "missedRisks": [
+    { "title": "5-8 word headline", "severity": "low|medium|high|critical", "controlId": "${framework} control reference", "description": "2-3 sentences" }
+  ],
+  "actNow": [
+    { "rank": 1, "title": "short action", "why": "one sentence — why this week", "controlIds": ["${framework} controls"] }
+  ],
+  "defer": [
+    { "title": "short action", "why": "one sentence — why it can wait" }
+  ]
+}
+\`\`\`
+
+Rules:
+- If the prior analysts did good work, say so — set confidence to "high" and keep hallucinations/miscalibrations empty. Do not invent critiques.
+- If you disagree with the riskResult.overallScore, set adjustedScore to your own calibrated value and explain in verdict.
+- Every missedRisk and actNow item MUST include controlId(s) grounded in ${framework}. Examples: ${CONTROL_ID_EXAMPLES[framework]}.
+- Exactly 3 items in actNow, exactly 3 in defer.
 - Output the JSON block exactly once at the end.`;
 }

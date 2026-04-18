@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { consumeNdjsonStream, type AuditStreamEvent } from "@/lib/stream-client";
 import type { Framework } from "@/lib/types";
 import { Logo } from "@/components/site/Logo";
@@ -20,6 +20,7 @@ type PendingAudit = {
 type ModuleState = {
   status: "idle" | "running" | "done" | "error";
   commentary: string;
+  thinking: string;
   result: unknown;
   error: string | null;
 };
@@ -27,6 +28,7 @@ type ModuleState = {
 const emptyModule: ModuleState = {
   status: "idle",
   commentary: "",
+  thinking: "",
   result: null,
   error: null,
 };
@@ -39,6 +41,7 @@ export default function RunAuditPage() {
   const [code, setCode] = useState<ModuleState>(emptyModule);
   const [policy, setPolicy] = useState<ModuleState>(emptyModule);
   const [risk, setRisk] = useState<ModuleState>(emptyModule);
+  const [review, setReview] = useState<ModuleState>(emptyModule);
   const [fatalError, setFatalError] = useState<string | null>(null);
   const started = useRef(false);
 
@@ -50,6 +53,7 @@ export default function RunAuditPage() {
     }
     try {
       const p = JSON.parse(raw) as PendingAudit;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPending(p);
     } catch {
       router.replace("/new");
@@ -65,6 +69,7 @@ export default function RunAuditPage() {
       setCode,
       setPolicy,
       setRisk,
+      setReview,
       onSaved: (id) => router.replace(`/run/${id}`),
       onFatal: (msg) => setFatalError(msg),
     });
@@ -126,20 +131,26 @@ export default function RunAuditPage() {
               <ModuleCard
                 number="01"
                 title="Code Compliance"
-                subtitle="Score repository against framework"
+                subtitle="Haiku 4.5 · scoring repository"
                 state={code}
               />
               <ModuleCard
                 number="02"
                 title="Policy Intelligence"
-                subtitle="Read policies, flag conflicts and gaps"
+                subtitle="Sonnet 4.6 · reading policies, flagging conflicts"
                 state={policy}
               />
               <ModuleCard
                 number="03"
                 title="Risk Surface"
-                subtitle="Cross-reference code vs policy"
+                subtitle="Opus 4.7 · extended thinking cross-reference"
                 state={risk}
+              />
+              <ModuleCard
+                number="04"
+                title="Audit Review"
+                subtitle="Opus 4.7 · independent critic pass"
+                state={review}
               />
             </div>
           </>
@@ -161,9 +172,20 @@ function ModuleCard({
   state: ModuleState;
 }) {
   const logRef = useRef<HTMLDivElement>(null);
+  const thinkingRef = useRef<HTMLDivElement>(null);
+  // null = "auto" (open whenever thinking exists), true/false = explicit user choice
+  const [reasoningPref, setReasoningPref] = useState<boolean | null>(null);
+  const reasoningOpen =
+    reasoningPref === null ? state.thinking.length > 0 : reasoningPref;
+
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [state.commentary]);
+
+  useEffect(() => {
+    if (thinkingRef.current)
+      thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight;
+  }, [state.thinking]);
 
   const badge =
     state.status === "done"
@@ -183,6 +205,8 @@ function ModuleCard({
           ? "bg-destructive"
           : "bg-muted-foreground/40";
 
+  const hasThinking = state.thinking.length > 0;
+
   return (
     <motion.div
       layout
@@ -197,18 +221,63 @@ function ModuleCard({
           <span className="text-sm font-semibold">{title}</span>
           <span className="text-xs text-muted-foreground">{subtitle}</span>
         </div>
-        <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-          <span
-            className={`h-1.5 w-1.5 rounded-full ${dot}`}
-            style={
-              state.status === "running"
-                ? { animation: "pulse-dot 1.6s ease-in-out infinite" }
-                : undefined
-            }
-          />
-          {badge}
-        </span>
+        <div className="flex items-center gap-2">
+          {hasThinking && (
+            <button
+              type="button"
+              onClick={() => setReasoningPref(!reasoningOpen)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground transition-colors hover:text-foreground"
+              aria-expanded={reasoningOpen}
+              aria-label={reasoningOpen ? "Hide reasoning" : "Show reasoning"}
+            >
+              <span aria-hidden className="text-foreground/60">◇</span>
+              Reasoning
+              <span aria-hidden className="ml-0.5 text-muted-foreground/60">
+                {reasoningOpen ? "−" : "+"}
+              </span>
+            </button>
+          )}
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${dot}`}
+              style={
+                state.status === "running"
+                  ? { animation: "pulse-dot 1.6s ease-in-out infinite" }
+                  : undefined
+              }
+            />
+            {badge}
+          </span>
+        </div>
       </div>
+
+      <AnimatePresence initial={false}>
+        {hasThinking && reasoningOpen && (
+          <motion.div
+            key="reasoning"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden border-b border-border bg-background/60"
+          >
+            <div className="flex items-center justify-between border-b border-border/60 px-5 py-1.5">
+              <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                Extended thinking · summarized
+              </span>
+            </div>
+            <div
+              ref={thinkingRef}
+              className="max-h-56 overflow-y-auto px-5 py-3 font-mono text-xs leading-relaxed text-muted-foreground"
+            >
+              <pre className="whitespace-pre-wrap italic text-foreground/60">
+                {state.thinking}
+              </pre>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {(state.commentary || state.error) && (
         <div
           ref={logRef}
@@ -235,6 +304,7 @@ async function runPipeline(
     setCode: React.Dispatch<React.SetStateAction<ModuleState>>;
     setPolicy: React.Dispatch<React.SetStateAction<ModuleState>>;
     setRisk: React.Dispatch<React.SetStateAction<ModuleState>>;
+    setReview: React.Dispatch<React.SetStateAction<ModuleState>>;
     onSaved: (id: string) => void;
     onFatal: (msg: string) => void;
   },
@@ -278,48 +348,66 @@ async function runPipeline(
     h.setIngest({
       status: "done",
       commentary: `Fetched ${files.length} files from ${p.repoUrl}.\nParsed ${docs.length} policy documents.`,
+      thinking: "",
       result: { files: files.length, docs: docs.length },
       error: null,
     });
 
-    // --- Code audit ---
+    // --- Code + Policy in parallel ---
+    // Code and policy don't depend on each other. The reviewer pass will
+    // re-reconcile any cross-issues at the end, so we run them concurrently
+    // to roughly halve wall-clock time for this phase.
     h.setCode({ ...emptyModule, status: "running" });
-    h.setOverall("Module 1 of 3 — code compliance");
-    const codeResult = await streamAudit(h.setCode, "/api/audit/code", {
+    h.setOverall("Modules 1 & 2 — code compliance and policy intelligence (parallel)");
+
+    const codePromise = streamAudit(h.setCode, "/api/audit/code", {
       companyName: p.companyName,
       framework: p.framework,
       files,
     });
 
-    // --- Policy audit ---
-    h.setPolicy({ ...emptyModule, status: "running" });
-    h.setOverall("Module 2 of 3 — policy intelligence");
-    const policyResult =
-      docs.length > 0
-        ? await streamAudit(h.setPolicy, "/api/audit/policy", {
-            companyName: p.companyName,
-            framework: p.framework,
-            docs,
-            codeFindings: codeResult,
-          })
-        : null;
-    if (docs.length === 0) {
+    let policyPromise: Promise<unknown> | null = null;
+    if (docs.length > 0) {
+      h.setPolicy({ ...emptyModule, status: "running" });
+      policyPromise = streamAudit(h.setPolicy, "/api/audit/policy", {
+        companyName: p.companyName,
+        framework: p.framework,
+        docs,
+      });
+    } else {
       h.setPolicy({
         status: "done",
         commentary: "No policy documents provided — module skipped.",
+        thinking: "",
         result: null,
         error: null,
       });
     }
 
+    const [codeResult, policyResult] = await Promise.all([
+      codePromise,
+      policyPromise ?? Promise.resolve(null),
+    ]);
+
     // --- Risk synthesis ---
     h.setRisk({ ...emptyModule, status: "running" });
-    h.setOverall("Module 3 of 3 — risk synthesis");
+    h.setOverall("Module 3 — risk synthesis (Opus 4.7, extended thinking)");
     const riskResult = await streamAudit(h.setRisk, "/api/audit/risk", {
       companyName: p.companyName,
       framework: p.framework,
       codeResult,
       policyResult,
+    });
+
+    // --- Reviewer / critic pass ---
+    h.setReview({ ...emptyModule, status: "running" });
+    h.setOverall("Module 4 — audit review (Opus 4.7, critic pass)");
+    const reviewResult = await streamAudit(h.setReview, "/api/audit/review", {
+      companyName: p.companyName,
+      framework: p.framework,
+      codeResult,
+      policyResult,
+      riskResult,
     });
 
     // --- Save run ---
@@ -337,6 +425,7 @@ async function runPipeline(
         codeResult,
         policyResult,
         riskResult,
+        reviewResult,
       }),
     });
     const saveJson = await saveRes.json();
@@ -370,6 +459,8 @@ async function streamAudit(
   await consumeNdjsonStream(res, (ev: AuditStreamEvent) => {
     if (ev.type === "delta") {
       setState((s) => ({ ...s, commentary: s.commentary + ev.text }));
+    } else if (ev.type === "thinking") {
+      setState((s) => ({ ...s, thinking: s.thinking + ev.text }));
     } else if (ev.type === "result") {
       result = ev.payload;
     } else if (ev.type === "error") {

@@ -13,28 +13,43 @@ type SaveBody = {
   codeResult?: unknown;
   policyResult?: unknown;
   riskResult?: unknown;
+  reviewResult?: unknown;
 };
 
 function pickScoreAndRisk(
+  reviewResult: unknown,
   riskResult: unknown,
   codeResult: unknown,
   policyResult: unknown,
 ): { score: number | null; level: RiskLevel | null } {
-  const candidates = [riskResult, codeResult, policyResult].filter(
-    (v): v is Record<string, unknown> => !!v && typeof v === "object",
-  );
+  // Prefer the reviewer's adjusted verdict, then the risk synthesis, then
+  // fall back to whichever module result is available.
+  const candidates: Record<string, unknown>[] = [];
+  const push = (v: unknown) => {
+    if (v && typeof v === "object") candidates.push(v as Record<string, unknown>);
+  };
+  push(reviewResult);
+  push(riskResult);
+  push(codeResult);
+  push(policyResult);
+
   for (const c of candidates) {
     const score =
-      typeof c.overallScore === "number"
-        ? c.overallScore
-        : typeof c.score === "number"
-          ? c.score
-          : null;
+      typeof c.adjustedScore === "number"
+        ? c.adjustedScore
+        : typeof c.overallScore === "number"
+          ? c.overallScore
+          : typeof c.score === "number"
+            ? c.score
+            : null;
     const level =
-      typeof c.riskLevel === "string" &&
-      ["low", "medium", "high", "critical"].includes(c.riskLevel)
-        ? (c.riskLevel as RiskLevel)
-        : null;
+      typeof c.adjustedRiskLevel === "string" &&
+      ["low", "medium", "high", "critical"].includes(c.adjustedRiskLevel)
+        ? (c.adjustedRiskLevel as RiskLevel)
+        : typeof c.riskLevel === "string" &&
+            ["low", "medium", "high", "critical"].includes(c.riskLevel)
+          ? (c.riskLevel as RiskLevel)
+          : null;
     if (score !== null || level !== null) return { score, level };
   }
   return { score: null, level: null };
@@ -52,6 +67,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { score, level } = pickScoreAndRisk(
+      body.reviewResult,
       body.riskResult,
       body.codeResult,
       body.policyResult,
@@ -70,6 +86,7 @@ export async function POST(req: NextRequest) {
         code_result: body.codeResult ?? null,
         policy_result: body.policyResult ?? null,
         risk_result: body.riskResult ?? null,
+        review_result: body.reviewResult ?? null,
         overall_score: score,
         risk_level: level,
       })
