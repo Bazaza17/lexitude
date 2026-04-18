@@ -143,8 +143,8 @@ export default function RunAuditPage() {
                 title="Policy Intelligence"
                 subtitle={
                   pending.policyFiles.length === 0 && !pending.policyText.trim()
-                    ? "Sonnet 4.6 · inferring required policies from framework + code"
-                    : "Sonnet 4.6 · reading policies, flagging conflicts"
+                    ? "Haiku 4.5 · inferring required policies from framework + code"
+                    : "Haiku 4.5 · reading policies, flagging conflicts"
                 }
                 state={policy}
               />
@@ -157,7 +157,7 @@ export default function RunAuditPage() {
               <ModuleCard
                 number="04"
                 title="Audit Review"
-                subtitle="Sonnet 4.6 · independent calibration (runs in parallel with Risk)"
+                subtitle="Haiku 4.5 · independent calibration (runs in parallel with Risk)"
                 state={review}
               />
             </div>
@@ -556,7 +556,7 @@ async function runPipeline(
     h.setReview({ ...emptyModule, status: "running" });
     h.setOverall(
       policyResult
-        ? "Parallel synthesis — risk (Opus 4.7) · review (Sonnet 4.6, independent calibration)"
+        ? "Parallel synthesis — risk (Opus 4.7) · review (Haiku 4.5, independent calibration)"
         : "Parallel synthesis (policy unavailable) — risk + review running on code only",
     );
 

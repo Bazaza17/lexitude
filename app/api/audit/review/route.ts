@@ -86,9 +86,12 @@ Stream short commentary as you reason, then emit the final JSON block.`;
 
     const stream = client.messages.stream({
       model: REVIEW_MODEL,
+      // Haiku 4.5 — the review/calibration pass. Sonnet-with-adaptive-thinking
+      // was previously the slowest module; Haiku runs it in a fraction of the
+      // time and is plenty capable for this pattern (structured input, rigid
+      // output schema). Haiku doesn't accept `effort` or `thinking`, so
+      // neither is set.
       max_tokens: 3500,
-      thinking: { type: "adaptive", display: "summarized" },
-      output_config: { effort: "low" },
       system: [
         {
           type: "text",
@@ -104,19 +107,6 @@ Stream short commentary as you reason, then emit the final JSON block.`;
     stream.on("text", (delta) => {
       full += delta;
       send({ type: "delta", text: delta });
-    });
-
-    stream.on("streamEvent", (event) => {
-      if (
-        event.type === "content_block_delta" &&
-        "delta" in event &&
-        (event.delta as { type?: string })?.type === "thinking_delta"
-      ) {
-        const delta = event.delta as { thinking?: string };
-        if (typeof delta.thinking === "string" && delta.thinking.length > 0) {
-          send({ type: "thinking", text: delta.thinking });
-        }
-      }
     });
 
     const finalMessage = await stream.finalMessage();

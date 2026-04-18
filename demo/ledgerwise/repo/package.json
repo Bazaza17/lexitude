@@ -1,0 +1,23 @@
+{
+  "name": "ledgerwise",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Ledgerwise — embedded payments for SMB accounting platforms.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "vitest run",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "16.0.0",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "pg": "8.11.5",
+    "zod": "3.23.8",
+    "stripe": "14.25.0",
+    "argon2": "0.40.3",
+    "pino": "9.3.2"
+  }
+}
