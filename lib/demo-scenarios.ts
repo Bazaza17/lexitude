@@ -43,7 +43,10 @@ FinovaBank — AI Usage Policy
     companyName: "NovoGen Health",
     industry: "Consumer genomics + clinical decision support · 95 employees · US",
     framework: "HIPAA",
-    repoUrl: "https://github.com/Bazaza17/lexitude",
+    // Pinned to the `demo` branch because novogen fixtures haven't been
+    // merged to main yet. `parseRepoUrl` can't resolve slash-containing
+    // branch names, so we pushed a slash-free alias and point here.
+    repoUrl: "https://github.com/Bazaza17/lexitude/tree/demo",
     repoPaths: "demo/novogen/repo",
     blurb:
       "HIPAA run on a biotech that streams unreviewed AI diagnoses to patients, writes PHI to localStorage, and ships genomic data to Anthropic without a BAA.",
