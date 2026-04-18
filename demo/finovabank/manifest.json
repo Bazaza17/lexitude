@@ -1,0 +1,51 @@
+{
+  "scenario": "FinovaBank",
+  "companyName": "FinovaBank",
+  "industry": "Financial Services — Consumer Banking",
+  "headcount": 280,
+  "regions": ["US", "EU"],
+  "framework": "SOC2",
+  "repoPath": "demo/finovabank/repo",
+  "policyPaths": [
+    "demo/finovabank/policies/Data_Privacy_Policy.md",
+    "demo/finovabank/policies/AI_Usage_Policy.md"
+  ],
+  "expectedFindings": {
+    "code": [
+      { "id": "secrets-in-config", "file": "lib/config.ts", "severity": "critical", "issue": "Hardcoded production secrets (Stripe, Anthropic, DB password, Plaid) committed to source." },
+      { "id": "pii-in-logs-login", "file": "app/api/auth/login/route.ts", "severity": "critical", "issue": "Logs password and SSN to stdout on every login attempt." },
+      { "id": "sql-injection-login", "file": "app/api/auth/login/route.ts", "severity": "critical", "issue": "Email concatenated into SQL string — injection vector." },
+      { "id": "weak-password-hash", "file": "app/api/auth/login/route.ts", "severity": "high", "issue": "Uses MD5 for password hashing; no salt." },
+      { "id": "pii-in-response", "file": "app/api/users/[id]/route.ts", "severity": "critical", "issue": "Returns SSN, full PAN, CVV, tax ID in API response with no authorization check." },
+      { "id": "sql-injection-users", "file": "app/api/users/[id]/route.ts", "severity": "critical", "issue": "User id concatenated into SQL string." },
+      { "id": "pii-in-logs-users", "file": "app/api/users/[id]/route.ts", "severity": "high", "issue": "Full user profile including SSN logged." },
+      { "id": "ai-no-human-review", "file": "app/api/chat/route.ts", "severity": "critical", "issue": "AI chat responses delivered directly to customer with no human review or guardrails." },
+      { "id": "ai-financial-advice", "file": "app/api/chat/route.ts", "severity": "critical", "issue": "System prompt instructs the model to give concrete investment/tax/retirement advice." },
+      { "id": "pii-to-third-party-ai", "file": "app/api/chat/route.ts", "severity": "critical", "issue": "SSN, balance, and card number sent in prompt to Anthropic API." },
+      { "id": "plaintext-third-party", "file": "lib/analytics.ts", "severity": "high", "issue": "SSN/email forwarded to Segment, Mixpanel, and DoubleClick without consent check." },
+      { "id": "card-in-localstorage", "file": "components/PaymentForm.tsx", "severity": "critical", "issue": "Card number and CVV written to localStorage and cookies on submit." },
+      { "id": "db-no-encryption", "file": "lib/db.ts", "severity": "high", "issue": "ssl:false on DB connection; no field-level encryption for PII columns." },
+      { "id": "sql-injection-db", "file": "lib/db.ts", "severity": "critical", "issue": "writePII builds SQL via string concatenation." },
+      { "id": "missing-security-headers", "file": "middleware.ts", "severity": "medium", "issue": "CORS wide open (Access-Control-Allow-Origin: *) with credentials; no CSP, HSTS, or X-Frame-Options." },
+      { "id": "vulnerable-deps", "file": "package.json", "severity": "medium", "issue": "Pinned to vulnerable versions of axios (0.21.0) and lodash (4.17.15)." }
+    ],
+    "policyVsCode": [
+      { "policy": "PII must never be written to logs", "code": "app/api/auth/login/route.ts logs password + SSN; app/api/users/[id]/route.ts logs full profile" },
+      { "policy": "All PII must be encrypted at rest (AES-256)", "code": "lib/config.ts sets encryption:false; lib/db.ts uses ssl:false and stores PII in plaintext columns" },
+      { "policy": "Card numbers must not be stored in browser storage", "code": "components/PaymentForm.tsx writes card+CVV to localStorage and cookies" },
+      { "policy": "PII sharing with third parties requires consent + DPA", "code": "lib/analytics.ts forwards SSN/email to Segment, Mixpanel, DoubleClick unconditionally" },
+      { "policy": "Production secrets must not appear in source", "code": "lib/config.ts contains live Stripe, Anthropic, Plaid, and DB credentials" },
+      { "policy": "Customer-facing AI output must pass human review or guardrails", "code": "app/api/chat/route.ts streams raw model output straight to the customer" },
+      { "policy": "AI must not give personalized financial advice", "code": "app/api/chat/route.ts system prompt explicitly tells the model to give investment/tax/retirement advice" },
+      { "policy": "SSNs/card numbers must not be sent to foundation-model APIs", "code": "app/api/chat/route.ts injects SSN, balance, card into the prompt sent to Anthropic" },
+      { "policy": "AI endpoints must enforce rate limits and authentication", "code": "app/api/chat/route.ts has no rate limiting; no auth check" },
+      { "policy": "Queries must use parameterized SQL", "code": "Every db.query call concatenates user input into SQL" }
+    ],
+    "scoreTargets": {
+      "code": 18,
+      "policy": 22,
+      "overall": 15,
+      "riskLevel": "critical"
+    }
+  }
+}
